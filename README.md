@@ -12,17 +12,16 @@ A Git repository was maintained with a public remote found here: https://github.
 There were some items I didn't understand about the project's operation.  Based on the feedback I did receive, I made these assumptions:
 
 1. All times are processed and shown in Seconds:Nanoseconds
-2. 
+2. Added -v as a verbose mode per pg 2 of instructions
 
 ## Program Switches
 The program can be invoked as:
 
 ```
 oss [-h] 
-oss [-s t] [-l f]
+oss [-v]
   -h Describe how the project should be run, then terminate.
-  -s t Indicate how many maximum seconds before the system terminates
-  -l f Specify a particular name for the log file
+  -v puts the logfile output into Verbose Mode
 ```
 
 ## Install
@@ -47,6 +46,6 @@ The biggest problem experienced
 ## Work Log
 
 - 4/5/2021 - Setup initial project files and make file
-
+- 4/6/2021 - Continued setup of project
 
 *©2021 Brett W. Huffman*

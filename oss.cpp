@@ -18,8 +18,8 @@
 #include <unistd.h>
 #include "sharedStructures.h"
 #include "productSemaphores.h"
-#include "bitmapper.h"
 #include "oss.h"
+#include "bitmapper.h"
 
 using namespace std;
 
@@ -55,7 +55,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
 
     // Print out the header
     LogItem("------------------------------------------------\n", strLogFile);
-    LogItem("OSS by Brett Huffman - CMP SCI 4760 - Project 4\n", strLogFile);
+    LogItem("OSS by Brett Huffman - CMP SCI 4760 - Project 5\n", strLogFile);
     LogItem("------------------------------------------------\n", strLogFile);
 
 

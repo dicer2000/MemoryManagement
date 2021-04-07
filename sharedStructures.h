@@ -1,13 +1,13 @@
 /********************************************
  * sharedStructures - This is a file that
  * contains all the structures shared between
- * the oss & child processes.  It
+ * the oss & user_proc processes.  It
  * contains library calls, the main structure
  * containing data, and shared messages.
  * 
  * Brett Huffman
- * CMP SCI 4760 - Project 4
- * Due Mar 29, 2021
+ * CMP SCI 4760 - Project 5
+ * Due Apr 20, 2021
  * sharedStructures.h file for project
  ********************************************/
 #ifndef SHAREDSTRUCTURES_H
@@ -90,7 +90,7 @@ const long OSS_MQ_TYPE = 1;
 
 // The size of our product queue
 const int QUEUE_LENGTH = 18;
-const char* ChildProcess = "./child";
+const char* ChildProcess = "./user_proc";
 const int maxTimeBetweenNewProcsNS = 10;
 const int maxTimeBetweenNewProcsSecs = 10;
 const int fullTransactionTimeInNS = 10000000;

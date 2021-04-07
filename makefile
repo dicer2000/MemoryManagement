@@ -1,6 +1,6 @@
-# Improved Makefile by Brett Huffman v1.3
+# Improved Makefile by Brett Huffman v1.4
 # (c)2021 Brett Huffman
-# This includes 2 executables, sos and child
+# This includes 2 executables, sos and user_proc
 
 # App 1 - builds the oss program
 appname1 := oss
@@ -17,8 +17,8 @@ $(appname1): $(objects1) $(LDLIBS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(appname1) $(objects1) $(LDLIBS)
 
 # App 2 - builds the child program
-appname2 := child
-srcfiles := $(shell find . -name "child*.cpp") ./productSemaphores.cpp
+appname2 := user_proc
+srcfiles := $(shell find . -name "user_proc*.cpp") ./productSemaphores.cpp
 objects2  := $(patsubst %.cpp, %.o, $(srcfiles))
 
 all: $(appname2)
