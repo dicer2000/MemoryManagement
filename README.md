@@ -47,5 +47,7 @@ The biggest problem experienced
 
 - 4/5/2021 - Setup initial project files and make file
 - 4/6/2021 - Continued setup of project
+- 4/7/2021 - Continued setup; Added deadlock code from lectures
+- 4/8/2021 - Setup clock to work with this project; Resource Descriptors
 
 *©2021 Brett W. Huffman*

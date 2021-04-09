@@ -13,7 +13,6 @@
  ********************************************/
 #include <iostream>
 #include <string.h>
-#include <vector>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,11 +37,11 @@ int main(int argc, char* argv[])
     // Argument processing
     int opt;
     string strLogFile = "logfile";
-    int nNumberOfSeconds = 300;
+    bool VerboseMode = false;
 
     // Go through each parameter entered and
     // prepare for processing
-    while ((opt = getopt(argc, argv, "hs:l")) != -1) {
+    while ((opt = getopt(argc, argv, "hv")) != -1) {
         switch (opt) {
             case 'h':
                 show_usage(argv[0]);
@@ -50,8 +49,8 @@ int main(int argc, char* argv[])
             case 'l':
                 strLogFile = optarg;
                 break;
-            case 's':
-                nNumberOfSeconds = atoi(optarg);
+            case 'v':
+                VerboseMode = true;
                 break;
             case '?': // Unknown arguement                
                 if (isprint (optopt))
@@ -73,7 +72,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    return ossProcess(strLogFile, nNumberOfSeconds);
+    return ossProcess(strLogFile, VerboseMode);
 }
 
 
@@ -84,10 +83,9 @@ static void show_usage(std::string name)
               << name << " - oss app by Brett Huffman for CMP SCI 4760" << std::endl
               << std::endl
               << "Usage:\t" << name << " [-h]" << std::endl
-              << "\t" << name << " [-s t] [-l f]" << std::endl
+              << "\t" << name << " [-v]" << std::endl
               << "Options:" << std::endl
               << "  -h   Describe how the project should be run, then terminate" << std::endl
-              << "  -s t Indicate how many maximum seconds before the system terminates" << std::endl
-              << "  -l f Specify a particular name for the log file (Default logfile)" << std::endl
+              << "  -v   Runs OSS in Verbose mode, yielding detailed run data" << std::endl
               << std::endl << std::endl;
 }

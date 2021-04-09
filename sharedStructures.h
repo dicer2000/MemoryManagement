@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <sys/ipc.h> 
 #include <sys/msg.h> 
 #include <string.h>
@@ -34,25 +35,8 @@
 #include <stdarg.h>  // For va_start, etc.
 
 //***************************************************
-// Enum for I/O vs CPU Bound Process
-//***************************************************
-enum ChildType { IO, CPU };
-
-//***************************************************
 // Structures
 //***************************************************
-struct ProcessControlBlock {        // Process Control Block
-    uint totalCPUTime;
-    uint totalSystemTime;
-    uint timeUsedLastBurst;
-    uint blockTotalTime;
-    uint blockTimeSeconds;
-    uint blockTimeNanoseconds;
-    uint blockedUntilSeconds;
-    uint blockedUntilNanoseconds;
-    uint waitStartTime;
-    ChildType processType;
-};
 
 struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
@@ -60,10 +44,16 @@ struct OssHeader {
     
 };
 
-struct OssItem {
-    ProcessControlBlock  PCB;
-    int  pidAssigned;
-    bool bReadyToProcess;
+struct ResourceDescriptors {
+//    std::vector<int> allocatedProcs;
+    int  countRequested;
+    int  countAllocated;
+    int  countReleased;
+    bool bSharable;
+};
+
+struct UserProcesses {
+    int pid;
 };
 
 const key_t KEY_SHMEM = 0x54320;  // Shared key
@@ -89,6 +79,8 @@ const long OSS_MQ_TYPE = 1;
 //***************************************************
 
 // The size of our product queue
+const int maxTimeToRunInSeconds = 3;
+
 const int QUEUE_LENGTH = 18;
 const char* ChildProcess = "./user_proc";
 const int maxTimeBetweenNewProcsNS = 10;

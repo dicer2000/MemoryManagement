@@ -1,6 +1,8 @@
  /********************************************
- * App - Process Scheduling (oss) Application
- * 
+ * oss App - Process Scheduling (oss) Application
+ * This is the main functionality of the oss
+ * application.  It is called by the oss_main.cpp
+ * file.
  * 
  * Brett Huffman
  * CMP SCI 4760 - Project 4
@@ -15,7 +17,7 @@
 using namespace std;
 
 // ossProcess - Process to start oss process.
-int ossProcess(std::string, int);
+int ossProcess(std::string, bool);
 
 int forkProcess(string, string, int);
 

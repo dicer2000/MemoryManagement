@@ -14,12 +14,13 @@
 #include <string.h>
 #include <queue>
 #include <list>
-#include <algorithm>
+//#include <algorithm>
 #include <unistd.h>
 #include "sharedStructures.h"
 #include "productSemaphores.h"
 #include "oss.h"
 #include "bitmapper.h"
+#include "deadlock.h"
 
 using namespace std;
 
@@ -32,11 +33,11 @@ void sigintHandler(int sig){ // can be called asynchronously
 const int MAX_PROCESSES = 100;
 
 // ossProcess - Process to start oss process.
-int ossProcess(string strLogFile, int timeInSecondsToTerminate)
+int ossProcess(string strLogFile, bool VerboseMode)
 {
     // Important items
     struct OssHeader* ossHeader;
-    struct OssItem* ossItemQueue;
+    struct ResourceDescriptors* ossItemQueue;
     int wstatus;
     long nNextTargetStartTime = 0;   // Next process' target start time
 
@@ -61,14 +62,6 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
 
     // Bitmap object for keeping track of children
     bitmapper bm(QUEUE_LENGTH);
-
-    // Check Input and exit if a param is bad
-    if(timeInSecondsToTerminate < 1)
-    {
-        errno = EINVAL;
-        perror("OSS: Unknown option");
-        return EXIT_FAILURE;
-    }
 
     // Register SIGINT handling
     signal(SIGINT, sigintHandler);
@@ -103,7 +96,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
     // Setup shared memory
     // allocate a shared memory segment with size of 
     // Product Header + entire Product array
-    int memSize = sizeof(OssHeader) + sizeof(OssItem) * QUEUE_LENGTH;
+    int memSize = sizeof(OssHeader) + sizeof(ResourceDescriptors) * QUEUE_LENGTH;
     shm_id = shmget(KEY_SHMEM, memSize, IPC_CREAT | IPC_EXCL | 0660);
     if (shm_id == -1) {
         perror("OSS: Error allocating shared memory");
@@ -119,7 +112,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
     // Get the queue header
     ossHeader = (struct OssHeader*) (shm_addr);
     // Get our entire queue
-    ossItemQueue = (struct OssItem*) (shm_addr+sizeof(OssHeader));
+    ossItemQueue = (struct ResourceDescriptors*) (shm_addr+sizeof(OssHeader));
     // Index to Item Currently Processing - Start at nothing processing
     int nIndexToCurrentChildProcessing = -1;
 
@@ -130,11 +123,10 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
     // Set all items in queue to empty
     for(int i=0; i < QUEUE_LENGTH; i++)
     {
-        // Capture the statistics
-
-        // Set as ready to process
-        ossItemQueue[i].PCB.totalCPUTime = 0;
+        // Set as ready
         ossItemQueue[i].pidAssigned = 0;
+        ossItemQueue[i].bSharable = getRandomProbability(0.20f);
+
     }
 
 
@@ -171,24 +163,15 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
 
                     // Setup Shared Memory for processing
                     ossItemQueue[nIndex].pidAssigned = newPID;
-                    ossItemQueue[nIndex].bReadyToProcess = true;
-                    ossItemQueue[nIndex].PCB.totalCPUTime = 0;
-                    ossItemQueue[nIndex].PCB.totalSystemTime = 0;
-                    ossItemQueue[nIndex].PCB.timeUsedLastBurst = 0;
-                    ossItemQueue[nIndex].PCB.blockTotalTime = 0;
-                    ossItemQueue[nIndex].PCB.waitStartTime = 
-                        ossHeader->simClockNanoseconds; // For Wait Time Calc
 
                     // Decide if it's a CPU or IO bound process
                     // This probability (<.50 will generate more CPU)
                     if(getRandomProbability(percentageCPU))
                     {
-                        ossItemQueue[nIndex].PCB.processType = IO;
                         nIOProcessCount++;
                     }
                     else
                     {
-                        ossItemQueue[nIndex].PCB.processType = CPU;
                         nCPUProcessCount++;
                     }
 
@@ -230,7 +213,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
         // Terminate the process if CTRL-C is typed
         // or if the max time-to-process has been exceeded
         // but only send out messages to kill once
-        if((sigIntFlag || (time(NULL)-secondsStart) > timeInSecondsToTerminate) && !isKilled)
+        if((sigIntFlag || (time(NULL)-secondsStart) > maxTimeToRunInSeconds) && !isKilled)
         {
             isKilled = true;
             // Send signal for every child process to terminate
@@ -286,20 +269,8 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
             {
                 if(ossItemQueue[nIndex].pidAssigned == waitPID)
                 {
-                    // Update the overall statistics
-                    if(ossItemQueue[nIndex].PCB.processType==CPU)
-                    {
-                        nCPU_CPUUtil=ossItemQueue[nIndex].PCB.totalCPUTime/100000;
-                        nIO_TimeWaitedBlocked+=ossItemQueue[nIndex].PCB.blockTotalTime;
-                    }
-                    else
-                    {
-                        nIO_CPUUtil=ossItemQueue[nIndex].PCB.totalCPUTime/100000;
-                        nCPU_TimeWaitedBlocked=ossItemQueue[nIndex].PCB.blockTotalTime;
-                    }
 
                     // Reset to start over
-                    ossItemQueue[nIndex].PCB.totalCPUTime = 0;
                     ossItemQueue[nIndex].pidAssigned = 0;
                     bm.setBitmapBits(nIndex, false);
 
@@ -332,21 +303,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
             {
                 int nItemToCheck = *blItem;
 
-                // Is this item ready to unblock?
-                if(ossHeader->simClockSeconds > ossItemQueue[nItemToCheck].PCB.blockTimeSeconds ||
-                    (ossItemQueue[nItemToCheck].PCB.blockTimeSeconds==ossHeader->simClockSeconds
-                    && ossHeader->simClockNanoseconds > ossItemQueue[nItemToCheck].PCB.blockTimeNanoseconds))
-                {
-                    // Reset the block time
-                    ossItemQueue[nItemToCheck].PCB.blockTimeSeconds = 0;
-                    ossItemQueue[nItemToCheck].PCB.blockTimeNanoseconds = 0;
-                    blockedList.erase(blItem);
 
-                    ossItemQueue[nItemToCheck].PCB.waitStartTime = 
-                        ossHeader->simClockNanoseconds; // For Wait Time C
-
-                    // Just put one
-                    readyQueue.push(nItemToCheck);
 
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Unblocked item", 
@@ -356,7 +313,7 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
                     // Increment System Clock for Un-blocking
                     ossHeader->simClockNanoseconds += 10000;
                     break;
-                }
+                
             }
         }
 
@@ -384,9 +341,6 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
                     ossItemQueue[nIndexToNextChildProcessing].pidAssigned,
                     nIndexToNextChildProcessing, strLogFile);
 
-                nTotalWaitTime = ossHeader->simClockNanoseconds -
-                    ossItemQueue[nIndexToNextChildProcessing].PCB.waitStartTime;
-
                 // Dispatch it
                 strcpy(msg.text, "Dispatch");
                 msg.type = ossItemQueue[nIndexToNextChildProcessing].pidAssigned;
@@ -396,10 +350,6 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
                 //------------------------------------
                 msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), OSS_MQ_TYPE, 0); 
 //                cout << "OSS: from child: " << msg.text << endl;
-
-                // Update the statistics on what happened while PROC was running
-                ossHeader->simClockNanoseconds += 
-                    ossItemQueue[nIndexToNextChildProcessing].PCB.timeUsedLastBurst;
 
                 // Child shutting down, so handle
                 if(strcmp(msg.text, "Shutdown")==0)
@@ -418,8 +368,6 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
                 }
                 else
                 {
-                    ossItemQueue[nIndexToNextChildProcessing].PCB.waitStartTime = 
-                        ossHeader->simClockNanoseconds; // For Wait Time C
                     // Full Quantum Run, just requeue and keep going
                     readyQueue.push(nIndexToNextChildProcessing);
                 }
@@ -467,21 +415,13 @@ int ossProcess(string strLogFile, int timeInSecondsToTerminate)
         LogItem("________________________________\n", strLogFile);
         LogItem("OSS Statistics", strLogFile);
         LogItem("\t\t\tI/O\t\tCPU", strLogFile);
-        LogItem("Total\t\t\t" + GetStringFromInt(nIOProcessCount) + "\t\t" + GetStringFromInt(nCPUProcessCount), strLogFile);
-        string strIOStat = GetStringFromFloat((float)nTotalTime/(float)nIOProcessCount);
-        string strCPUStat = GetStringFromFloat((float)nTotalTime/(float)nCPUProcessCount);
-        LogItem("Avg Sys Time\t\t" + strIOStat + "\t\t" + strCPUStat, strLogFile);
-        strIOStat = GetStringFromFloat((float)nIO_CPUUtil/(float)nIOProcessCount);
-        strCPUStat = GetStringFromFloat((float)nCPU_CPUUtil/(float)nCPUProcessCount);
-        LogItem("Avg CPU Util\t\t" + strIOStat + "\t\t" + strCPUStat, strLogFile);
-        strIOStat = GetStringFromFloat((float)nIO_TimeWaitedBlocked/(float)nIOProcessCount);
-        strCPUStat = GetStringFromFloat((float)nCPU_TimeWaitedBlocked/(float)nCPUProcessCount);
-        LogItem("Avg Time Blocked\t" + strIOStat + "\t\t" + strCPUStat, strLogFile);
-
-        strCPUStat = GetStringFromFloat((float)nTotalWaitTime/(float)(nIOProcessCount+nCPUProcessCount));
-        LogItem("Avg Wait Time:\t" + strIOStat + "ns", strLogFile);
-        strCPUStat = GetStringFromFloat((float)nCPU_IdleTime);
-        LogItem("CPU Idle Time:\t" + strCPUStat + "\n", strLogFile);
+//        LogItem("Total\t\t\t" + GetStringFromInt(nIOProcessCount) + "\t\t" + GetStringFromInt(nCPUProcessCount), strLogFile);
+//        string strIOStat = GetStringFromFloat((float)nTotalTime/(float)nIOProcessCount);
+//        string strCPUStat = GetStringFromFloat((float)nTotalTime/(float)nCPUProcessCount);
+//        LogItem("Avg Sys Time\t\t" + strIOStat + "\t\t" + strCPUStat, strLogFile);
+//        LogItem("Avg Wait Time:\t" + strIOStat + "ns", strLogFile);
+//        strCPUStat = GetStringFromFloat((float)nCPU_IdleTime);
+//        LogItem("CPU Idle Time:\t" + strCPUStat + "\n", strLogFile);
     }
     // Success!
     return EXIT_SUCCESS;
