@@ -8,7 +8,7 @@ srcfiles := $(shell find . -name "oss*.cpp") ./productSemaphores.cpp ./bitmapper
 
 # For debugging
 #$(error   VAR is $(srcfiles))
-#CXXFLAGS := -Wpadded
+CXXFLAGS := -Wpadded
 objects1  := $(patsubst %.cpp, %.o, $(srcfiles))
 
 all: $(appname1)

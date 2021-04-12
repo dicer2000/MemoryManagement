@@ -50,13 +50,21 @@ int main(int argc, char* argv[])
     // Register SIGQUIT handling
     signal(SIGINT, sigQuitHandler);
 
+    // Attach to the control Semaphore
+    productSemaphores s(KEY_MUTEX, false);
+    if(!s.isInitialized())
+    {
+        perror("user_proc: Could not successfully find Semaphore");
+        exit(EXIT_FAILURE);
+    }
+
     // Pid used throughout child
     const pid_t nPid = getpid();
 
     // Seed the randomizer with the PID
     srand(time(0) ^ nPid);
 
-    //cout << "********************" << childType << endl;
+    time_t secondsStart = time(NULL);   // Start time
 
     // Open the connection with the Message Queue
     // msgget creates a message queue 
@@ -97,11 +105,11 @@ int main(int argc, char* argv[])
     }
 
     // Get the queue header
-    struct OssHeader* ossHeader = 
-        (struct OssHeader*) (shm_addr);
-    // Get our entire queue - HA! Got the struct to align right
-    struct OssItem*ossItemQueue = 
-        (struct OssItem*) (shm_addr+sizeof(OssHeader));
+    struct OssHeader* ossHeader = (struct OssHeader*) (shm_addr);
+    // Get our entire queue
+    struct UserProcesses* ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(OssHeader));
+    // Get our entire queue
+    struct ResourceDescriptors* ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(ossUserProcesses)*PROC_QUEUE_LENGTH));
 
     // Log a new process started
     LogItem("PROC ", ossHeader->simClockSeconds,
@@ -109,83 +117,72 @@ int main(int argc, char* argv[])
         nPid, nItemToProcess, strLogFile);
 
     // Loop until child process is stopped or it shuts down naturally
-    while(!sigQuitFlag)
+    while(1==1)
     {
 
         // Set probabilities for this round
-        bool willInterrupt = false;
+        bool willRequestResource = getRandomProbability(0.15f);
         bool willShutdown = getRandomProbability(0.15f);
-        int nanoSecondsToShutdown = getRandomValue(200, 450);
-        int nanoSecondsToInterrupt = getRandomValue(200, 450);   // Only used if interrupt happens
-        if(ossItemQueue[nItemToProcess].PCB.processType == CPU)
-            // CPU Bound process - less likely to get interrupted
-            willInterrupt = getRandomProbability(0.10f) ? true : false;
-        else
-            // IO Bound - much more likely to get interrupted
-            willInterrupt = getRandomProbability(0.40f) ? true : false;
 
-
-        msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), nPid, 0); 
-
-        // Send back to oss
-        if(willShutdown)
+        // Shut down => signal to OSS to release resources and remove (Only after at least 1 second)
+        if(sigQuitFlag || (time(NULL) - secondsStart > 1 && willShutdown))
         {
-            strcpy(msg.text, "Shutdown");
-            ossItemQueue[nItemToProcess].PCB.totalCPUTime += nanoSecondsToShutdown;
-            ossItemQueue[nItemToProcess].PCB.timeUsedLastBurst = nanoSecondsToShutdown;
-            // Send the message
-            msg.type = OSS_MQ_TYPE;
-            int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
-            
             LogItem("PROC ", ossHeader->simClockSeconds,
-                ossHeader->simClockNanoseconds + nanoSecondsToShutdown,
+                ossHeader->simClockNanoseconds,
                 "Shutting down process", 
                 nPid, nItemToProcess, strLogFile);
 
+            strcpy(msg.text, "Shutdown");
+
+            // Send the message Synchronously - we want it to shutdown
+            // all the resources, then exit cleanly
+            msg.type = OSS_MQ_TYPE;
+            msg.index = nItemToProcess;
+            int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
+
+            // Once I get the reply back, we can continue to shutdown
+            msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), nItemToProcess, 0); 
+
             return EXIT_SUCCESS;
         }
-        else if(willInterrupt)
+        
+        // Resource Request
+        if(willRequestResource)
         {
-            // An interrupt happened
-            strcpy(msg.text, "Block");
-            ossItemQueue[nItemToProcess].PCB.totalCPUTime += nanoSecondsToInterrupt;
-            ossItemQueue[nItemToProcess].PCB.timeUsedLastBurst = nanoSecondsToInterrupt;
-            // Set the block time to the current sim time + block time
-            ossItemQueue[nItemToProcess].PCB.blockTimeSeconds = 
-                ossHeader->simClockSeconds + getRandomValue(0, 5);
-            ossItemQueue[nItemToProcess].PCB.blockTimeNanoseconds = 
-                ossHeader->simClockNanoseconds + getRandomValue(0, 1000);
-            ossItemQueue[nItemToProcess].PCB.blockTotalTime += 
-                ossItemQueue[nItemToProcess].PCB.blockTimeSeconds;
-            // Log what happened
-            string strChildInfo2 = "Process blocked until ";
-            strChildInfo2.append(GetStringFromInt(ossItemQueue[nItemToProcess].PCB.blockTimeSeconds));
-            strChildInfo2.append("s:");
-            strChildInfo2.append(GetStringFromInt(ossItemQueue[nItemToProcess].PCB.blockTimeNanoseconds));
-            strChildInfo2.append("ms");
-            LogItem("PROC ", ossHeader->simClockSeconds,
-                ossHeader->simClockNanoseconds + nanoSecondsToInterrupt, strChildInfo2, 
-                nPid, nItemToProcess, strLogFile);  
-        }
-        else
-        {
-            // PROC Ran for entire time Quantum
-            strcpy(msg.text, "Full");
-            // the full time quantum was used, so add 10M ns
-            ossItemQueue[nItemToProcess].PCB.totalCPUTime += fullTransactionTimeInNS;
-            ossItemQueue[nItemToProcess].PCB.timeUsedLastBurst = fullTransactionTimeInNS;
+            // Get the resource being requested
+            int nResource = getRandomValue(0, DESCRIPTOR_COUNT-1);
 
-            // Log it
+            // Get the string version and Log it
+            string strResource = GetStringFromInt(nResource);
+
+            strcpy(msg.text, "RequestResource");
+
+            // Get Exclusive control w/ semaphore then make request
+            s.Wait();
+
             LogItem("PROC ", ossHeader->simClockSeconds,
-                ossHeader->simClockNanoseconds + fullTransactionTimeInNS, "Full quantum use", 
+                ossHeader->simClockNanoseconds,
+                "Requesting Resource Class: " + strResource, 
                 nPid, nItemToProcess, strLogFile);
 
+            // Add request to queue
+            ResourceRequests r;
+            r.requestType = REQUEST_CREATE;
+            r.resourceID = nResource;
+            r.userProcessID = nItemToProcess;
+            ossHeader->request.push_back(r);
+            s.Signal();
+
+            // Now go into a spin-wait, waiting for response
+            // back that I own the resource
+            int response = 0;
+            while(!sigQuitFlag && !response)
+            {
+                response = msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), nItemToProcess, 0)
+            }
+            // At this point, I now own the process
         }
 
-        // Actually send the message back
-        msg.type = OSS_MQ_TYPE;
-        int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
-        
     }
 }
 

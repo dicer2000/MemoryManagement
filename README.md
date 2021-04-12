@@ -49,5 +49,8 @@ The biggest problem experienced
 - 4/6/2021 - Continued setup of project
 - 4/7/2021 - Continued setup; Added deadlock code from lectures
 - 4/8/2021 - Setup clock to work with this project; Resource Descriptors
+- 4/9/2021 - Created the control semaphore; Debugging; Created main loop of oss; created main loop of user_proc; Debugging
+- 4/10/2021 - Re-writing the request mechanism; Resource Request vector; Debugging
+- 4/11/2021 - Testing; Putting requests in shared memory
 
 *©2021 Brett W. Huffman*

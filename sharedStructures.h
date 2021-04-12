@@ -31,24 +31,38 @@
 #include <sys/ipc.h> 
 #include <sys/msg.h> 
 #include <string.h>
-
 #include <stdarg.h>  // For va_start, etc.
+#include "productSemaphores.h"
+
+//***************************************************
+// Enums
+//***************************************************
+
+enum RequestType { REQUEST_CREATE, REQUEST_DESTROY };
 
 //***************************************************
 // Structures
 //***************************************************
 
+struct ResourceRequests {
+    RequestType requestType;
+    int         resourceID;
+    int         userProcessID;
+};
+
 struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
     int simClockNanoseconds; // System Clock - Nanoseconds
-    
+    std::vector<ResourceRequests> request;  // New Requests
 };
 
 struct ResourceDescriptors {
-//    std::vector<int> allocatedProcs;
+    int  countTotalResources;
     int  countRequested;
     int  countAllocated;
     int  countReleased;
+    std::vector<int> allocatedProcs;
+    std::vector<int> waitingQueue;
     bool bSharable;
 };
 
@@ -69,10 +83,15 @@ const key_t KEY_MESSAGE_QUEUE = 0x54324;
 struct message {
     long type;
     char text[20];
+    int  index;
 } msg;
 
-const long OSS_MQ_TYPE = 1;
+const long OSS_MQ_TYPE = 1000;
 
+//***************************************************
+// Semaphores
+//***************************************************
+const key_t KEY_MUTEX = 0x54321;
 
 //***************************************************
 // Important Program Constants
@@ -81,7 +100,8 @@ const long OSS_MQ_TYPE = 1;
 // The size of our product queue
 const int maxTimeToRunInSeconds = 3;
 
-const int QUEUE_LENGTH = 18;
+const int PROC_QUEUE_LENGTH = 18;
+const int DESCRIPTOR_COUNT = 18;
 const char* ChildProcess = "./user_proc";
 const int maxTimeBetweenNewProcsNS = 10;
 const int maxTimeBetweenNewProcsSecs = 10;

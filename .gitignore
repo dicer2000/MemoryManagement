@@ -1042,3 +1042,4 @@ dkms.conf
 
 oss
 user_proc
+logfile*

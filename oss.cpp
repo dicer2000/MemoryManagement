@@ -37,7 +37,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
 {
     // Important items
     struct OssHeader* ossHeader;
-    struct ResourceDescriptors* ossItemQueue;
+    struct UserProcesses* ossUserProcesses;
+    struct ResourceDescriptors* ossResourceDescriptors;
     int wstatus;
     long nNextTargetStartTime = 0;   // Next process' target start time
 
@@ -61,7 +62,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
 
     // Bitmap object for keeping track of children
-    bitmapper bm(QUEUE_LENGTH);
+    bitmapper bm(PROC_QUEUE_LENGTH);
 
     // Register SIGINT handling
     signal(SIGINT, sigintHandler);
@@ -83,7 +84,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
     uint nTotalWaitTime = 0;
 
     // Create a Semaphore to coordinate control
-//    productSemaphores s(KEY_MUTEX, true, 1);
+    productSemaphores s(KEY_MUTEX, true, 1);
+    if(!s.isInitialized())
+    {
+        perror("OSS: Could not successfully create Semaphore");
+        exit(EXIT_FAILURE);
+    }
 
     // Setup Message Queue Functionality
     // Note: The oss app will always have a type of 1
@@ -96,7 +102,9 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Setup shared memory
     // allocate a shared memory segment with size of 
     // Product Header + entire Product array
-    int memSize = sizeof(OssHeader) + sizeof(ResourceDescriptors) * QUEUE_LENGTH;
+    int memSize = sizeof(OssHeader) + 
+        (sizeof(UserProcesses) * PROC_QUEUE_LENGTH) +
+        (sizeof(ResourceDescriptors) * DESCRIPTOR_COUNT);
     shm_id = shmget(KEY_SHMEM, memSize, IPC_CREAT | IPC_EXCL | 0660);
     if (shm_id == -1) {
         perror("OSS: Error allocating shared memory");
@@ -112,7 +120,10 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Get the queue header
     ossHeader = (struct OssHeader*) (shm_addr);
     // Get our entire queue
-    ossItemQueue = (struct ResourceDescriptors*) (shm_addr+sizeof(OssHeader));
+    ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(OssHeader));
+    // Get our entire queue
+    ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(ossUserProcesses)*PROC_QUEUE_LENGTH));
+
     // Index to Item Currently Processing - Start at nothing processing
     int nIndexToCurrentChildProcessing = -1;
 
@@ -120,27 +131,27 @@ int ossProcess(string strLogFile, bool VerboseMode)
     ossHeader->simClockSeconds = 0;
     ossHeader->simClockNanoseconds = 0;
 
-    // Set all items in queue to empty
-    for(int i=0; i < QUEUE_LENGTH; i++)
+    // Setup all Descriptors per instructions
+    for(int i=0; i < DESCRIPTOR_COUNT; i++)
     {
-        // Set as ready
-        ossItemQueue[i].pidAssigned = 0;
-        ossItemQueue[i].bSharable = getRandomProbability(0.20f);
-
+        // Randomly setup each descriptor per program instructions
+        ossResourceDescriptors[i].bSharable = getRandomProbability(0.20f);
+        ossResourceDescriptors[i].countTotalResources = getRandomValue(1, 10);
     }
 
 
     // Start of main loop that will do the following
     // - Handle oss shutdown
-    // - Create new processes on avg of 1 sec intervals
+    // - Create new processes in between 500-1000 msec intervals
     // - Handle child shutdowns
-    // - Dispatch processes to run on round-robin basis
+    // - Process requests for resources and distributing
+    // - Handle deadlocks by selecting a victim and killing
     // - Gather statistics of each process
     // - assorted other misc items
     while(!isShutdown)
     {
         // Every loop gets 100-10000ns for scheduling time
-        ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
+ //       ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
 
         // ********************************************
         // Create New Processes
@@ -152,7 +163,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
             // Check if there is room for new processes
             // in the bitmap structure
             int nIndex = 0;
-            for(;nIndex < QUEUE_LENGTH; nIndex++)
+            for(;nIndex < PROC_QUEUE_LENGTH; nIndex++)
             {
                 if(!bm.getBitmapBits(nIndex))
                 {
@@ -162,32 +173,16 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     int newPID = forkProcess(ChildProcess, strLogFile, nIndex);
 
                     // Setup Shared Memory for processing
-                    ossItemQueue[nIndex].pidAssigned = newPID;
-
-                    // Decide if it's a CPU or IO bound process
-                    // This probability (<.50 will generate more CPU)
-                    if(getRandomProbability(percentageCPU))
-                    {
-                        nIOProcessCount++;
-                    }
-                    else
-                    {
-                        nCPUProcessCount++;
-                    }
+                    ossUserProcesses[nIndex].pid = newPID;
 
                     // Set bit in bitmap
                     bm.setBitmapBits(nIndex, true);
 
-                    // Push immediately onto the Ready Queue
-                    readyQueue.push(nIndex);
-
                     // Increment how many have been made
                     nProcessCount++;
 
-
-
                     // Increment out next target to make a new process
-                    nNextTargetStartTime+=1000000000;
+                    nNextTargetStartTime+=getRandomValue(1, 500);
                     cout << "Next Target Time: " << nNextTargetStartTime << endl;
 
                     // Log it
@@ -198,9 +193,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                     // Log Process Status
                     LogItem(bm.getBitView(), strLogFile);
-
-                    // Simulate time to add new process
-                    ossHeader->simClockNanoseconds += 500000;
 
                     break;
                 }
@@ -217,13 +209,13 @@ int ossProcess(string strLogFile, bool VerboseMode)
         {
             isKilled = true;
             // Send signal for every child process to terminate
-            for(int nIndex=0;nIndex<QUEUE_LENGTH;nIndex++)
+            for(int nIndex=0;nIndex<PROC_QUEUE_LENGTH;nIndex++)
             {
                 // Send signal to close if they are in-process
                 if(bm.getBitmapBits(nIndex))
                 {
                     // Kill it and update our bitmap
-                    kill(ossItemQueue[nIndex].pidAssigned, SIGQUIT);
+                    kill(ossUserProcesses[nIndex].pid, SIGQUIT);
                     bm.setBitmapBits(nIndex, false);
                 }
             }
@@ -265,22 +257,19 @@ int ossProcess(string strLogFile, bool VerboseMode)
 //            cout << "O: ********************* Exited: " << waitPID << endl;
 
             // Find the PID and remove it from the bitmap
-            for(int nIndex=0;nIndex<QUEUE_LENGTH;nIndex++)
+            for(int nIndex=0;nIndex<PROC_QUEUE_LENGTH;nIndex++)
             {
-                if(ossItemQueue[nIndex].pidAssigned == waitPID)
+                if(ossUserProcesses[nIndex].pid == waitPID)
                 {
 
                     // Reset to start over
-                    ossItemQueue[nIndex].pidAssigned = 0;
+                    ossUserProcesses[nIndex].pid = 0;
                     bm.setBitmapBits(nIndex, false);
 
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
-
-                    // Simulate time to process item shutdown
-                    ossHeader->simClockNanoseconds += 500000;
 
                     break;
                 }
@@ -294,27 +283,63 @@ int ossProcess(string strLogFile, bool VerboseMode)
         }
 
         // ********************************************
-        // Manage BlockedList - Push aged BlockedList items onto the ReadyQueue
+        // Manage Resource Requests
         // ********************************************
         if(!isKilled)
         {
-            for(list<int>::iterator blItem = blockedList.begin(); 
-                blItem != blockedList.end(); ++blItem)
+            // First fullfil any waiting requests in request queue
+            s.Wait();
+
+            // Check the queue
+            if(ossHeader->request.Size() > 0)
             {
-                int nItemToCheck = *blItem;
+                ResourceRequests reqItem = ossHeader->request.Dequeue();
+                // Check if it's available
+                if(ossResourceDescriptors[reqItem.resourceID])
 
-
-
-                    LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "Unblocked item", 
-                        ossItemQueue[nItemToCheck].pidAssigned,
-                        nItemToCheck, strLogFile);
-                
-                    // Increment System Clock for Un-blocking
-                    ossHeader->simClockNanoseconds += 10000;
-                    break;
-                
             }
+            s.Signal();
+
+            // Receive a message if any available
+            if(msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), OSS_MQ_TYPE, IPC_NOWAIT))
+            {
+                if(strcmp(msg.text, "Shutdown")==0)
+                {
+                    // Go through each resource
+                    for(int i=0; i < DESCRIPTOR_COUNT; i++)
+                    {
+//            cout << "####### In Shutdown " << i << endl;
+                        // Find any resources held by this message and clear them out
+                        for(vector<int>::iterator resItem = 
+                            ossResourceDescriptors[i].allocatedProcs.begin(); 
+                            resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
+                        {
+                            if(*resItem == msg.index)
+                            {
+                                ossResourceDescriptors[i].allocatedProcs.erase(resItem);
+                                ossResourceDescriptors[i].countAllocated--;
+                            }
+                        }
+                        // Find any wait queue items for this item and clear them out
+                        for(vector<int>::iterator resItem = 
+                            ossResourceDescriptors[i].waitingQueue.begin(); 
+                            resItem != ossResourceDescriptors[i].waitingQueue.end(); ++resItem)
+                        {
+                            if(*resItem == msg.index)
+                            {
+                                ossResourceDescriptors[i].waitingQueue.erase(resItem);
+                                ossResourceDescriptors[i].countRequested--;
+                            }
+                        }
+
+                    }
+                    // Send back the message to continue shutdown
+                    strcpy(msg.text, "SUCCESS");
+                    msg.type = msg.index;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), IPC_NOWAIT);
+                }
+            }
+
         }
 
         // ********************************************
@@ -322,6 +347,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
         // Gather Stats
         // ********************************************
         // For figuring out Idle Time
+        /*
         if(readyQueue.empty())
         {
             nCPU_IdleTime += 1;
@@ -338,12 +364,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 cout << endl << "####### Dispatching #######" << endl;
                 LogItem("OSS  ", ossHeader->simClockSeconds,
                     ossHeader->simClockNanoseconds, "Dispatching process", 
-                    ossItemQueue[nIndexToNextChildProcessing].pidAssigned,
+                    ossUserProcesses[nIndexToNextChildProcessing].pid,
                     nIndexToNextChildProcessing, strLogFile);
 
                 // Dispatch it
                 strcpy(msg.text, "Dispatch");
-                msg.type = ossItemQueue[nIndexToNextChildProcessing].pidAssigned;
+                msg.type = ossUserProcesses[nIndexToNextChildProcessing].pid;
                 int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
                 //------------------------------------
                 // Message sent, waiting for response
@@ -360,7 +386,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 {
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Pushed item to blocked list", 
-                        ossItemQueue[nIndexToNextChildProcessing].pidAssigned,
+                        ossUserProcesses[nIndexToNextChildProcessing].pid,
                         nIndexToNextChildProcessing, strLogFile);
                     // Put on Block List
                     blockedList.push_back(nIndexToNextChildProcessing);
@@ -382,7 +408,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
             {
                 ossHeader->simClockNanoseconds = ossHeader->simClockNanoseconds - 1000000000;
                 ossHeader->simClockSeconds++;
-            }        
+            }
+        */
     } // End of main loop
 
     // Get the stats from the shared memory before we break it down
