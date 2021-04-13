@@ -41,11 +41,17 @@ int main(int argc, char* argv[])
         perror("user_proc: Incorrect argument found");
         exit(EXIT_FAILURE);
     }
+
     // Get the incoming Queue ID of the process
     const int nItemToProcess = atoi(argv[1]);
 
     // And the log file string
     string strLogFile = argv[2];
+
+    // The list of resources the process owns
+    vector<int> vecOwnedResourceList;
+
+    cout << "&&& New: " << nItemToProcess << " : " << strLogFile << endl;
 
     // Register SIGQUIT handling
     signal(SIGINT, sigQuitHandler);
@@ -116,32 +122,35 @@ int main(int argc, char* argv[])
         ossHeader->simClockNanoseconds, "Started Successfully", 
         nPid, nItemToProcess, strLogFile);
 
-    // Loop until child process is stopped or it shuts down naturally
-    while(1==1)
+    // Loop forever, the first if statement will handle controlled shutdown
+    while(true)
     {
 
         // Set probabilities for this round
-        bool willRequestResource = getRandomProbability(0.15f);
-        bool willShutdown = getRandomProbability(0.15f);
-
+        bool willRequestResource = getRandomProbability(0.015f);
+        bool willCloseResource = getRandomProbability(0.015f);
+        bool willShutdown = getRandomProbability(0.50f);
+        
         // Shut down => signal to OSS to release resources and remove (Only after at least 1 second)
         if(sigQuitFlag || (time(NULL) - secondsStart > 1 && willShutdown))
         {
+
+//            cout << "PR &&& In Destroy: " << " : " << nItemToProcess << endl;
+
             LogItem("PROC ", ossHeader->simClockSeconds,
                 ossHeader->simClockNanoseconds,
                 "Shutting down process", 
                 nPid, nItemToProcess, strLogFile);
 
-            strcpy(msg.text, "Shutdown");
-
             // Send the message Synchronously - we want it to shutdown
             // all the resources, then exit cleanly
             msg.type = OSS_MQ_TYPE;
-            msg.index = nItemToProcess;
-            int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
+            msg.action = REQUEST_SHUTDOWN;
+            msg.procIndex = nPid;
+            int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
 
             // Once I get the reply back, we can continue to shutdown
-            msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), nItemToProcess, 0); 
+            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
 
             return EXIT_SUCCESS;
         }
@@ -152,37 +161,43 @@ int main(int argc, char* argv[])
             // Get the resource being requested
             int nResource = getRandomValue(0, DESCRIPTOR_COUNT-1);
 
-            // Get the string version and Log it
-            string strResource = GetStringFromInt(nResource);
+//            cout << "PR &&& In Request: " << time(NULL) << " = " << secondsStart << " : " << willShutdown << endl;
 
-            strcpy(msg.text, "RequestResource");
-
-            // Get Exclusive control w/ semaphore then make request
-            s.Wait();
-
-            LogItem("PROC ", ossHeader->simClockSeconds,
-                ossHeader->simClockNanoseconds,
-                "Requesting Resource Class: " + strResource, 
-                nPid, nItemToProcess, strLogFile);
-
-            // Add request to queue
-            ResourceRequests r;
-            r.requestType = REQUEST_CREATE;
-            r.resourceID = nResource;
-            r.userProcessID = nItemToProcess;
-            ossHeader->request.push_back(r);
-            s.Signal();
-
-            // Now go into a spin-wait, waiting for response
-            // back that I own the resource
-            int response = 0;
-            while(!sigQuitFlag && !response)
-            {
-                response = msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), nItemToProcess, 0)
-            }
+            // Request a new resource
+            msg.type = OSS_MQ_TYPE;
+            msg.action = REQUEST_CREATE;
+            msg.procIndex = nPid;
+            msg.resIndex = nResource;
+            msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT); //IPC_NOWAIT
+            // Wait for a response to come back
+            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0);
             // At this point, I now own the process
+            if(msg.action == OK)
+                vecOwnedResourceList.push_back(msg.resIndex);
+
+            continue;
         }
 
+        if(vecOwnedResourceList.size() > 0 && time(NULL) - secondsStart > 1 && willCloseResource)
+        {
+
+//            cout << "PR &&& In Destroy: " << " : " << nItemToProcess << endl;
+            int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
+            msg.type = OSS_MQ_TYPE;
+            msg.action = REQUEST_DESTROY;
+            msg.procIndex = nPid;
+            msg.resIndex = vecOwnedResourceList[nItemToRemove];
+            int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+
+            // Once I get the reply back, remove the resource
+            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
+
+            // Push the item to the owned resource vector
+            if(msg.action == OK)
+                vecOwnedResourceList.push_back(nItemToRemove);
+
+        }
+        
     }
 }
 

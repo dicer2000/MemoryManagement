@@ -38,32 +38,25 @@
 // Enums
 //***************************************************
 
-enum RequestType { REQUEST_CREATE, REQUEST_DESTROY };
+enum RequestType { REQUEST_CREATE, REQUEST_DESTROY, REQUEST_SHUTDOWN, OK };
 
 //***************************************************
 // Structures
 //***************************************************
 
-struct ResourceRequests {
-    RequestType requestType;
-    int         resourceID;
-    int         userProcessID;
-};
-
 struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
     int simClockNanoseconds; // System Clock - Nanoseconds
-    std::vector<ResourceRequests> request;  // New Requests
 };
 
 struct ResourceDescriptors {
+    std::vector<int> allocatedProcs;
+    std::vector<int> waitingQueue;
     int  countTotalResources;
     int  countRequested;
     int  countAllocated;
     int  countReleased;
-    std::vector<int> allocatedProcs;
-    std::vector<int> waitingQueue;
-    bool bSharable;
+    int  countWaited;
 };
 
 struct UserProcesses {
@@ -82,8 +75,9 @@ const key_t KEY_MESSAGE_QUEUE = 0x54324;
 // Structure for message queue 
 struct message {
     long type;
-    char text[20];
-    int  index;
+    int  action;
+    int  procIndex;
+    int  resIndex;
 } msg;
 
 const long OSS_MQ_TYPE = 1000;

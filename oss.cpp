@@ -134,9 +134,11 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Setup all Descriptors per instructions
     for(int i=0; i < DESCRIPTOR_COUNT; i++)
     {
-        // Randomly setup each descriptor per program instructions
-        ossResourceDescriptors[i].bSharable = getRandomProbability(0.20f);
-        ossResourceDescriptors[i].countTotalResources = getRandomValue(1, 10);
+        // First decide if > 1 item is allowed (20% of the time)
+        if(getRandomProbability(0.20f))
+            ossResourceDescriptors[i].countTotalResources = getRandomValue(2, 10);
+        else
+            ossResourceDescriptors[i].countTotalResources = 1;
     }
 
 
@@ -194,7 +196,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     // Log Process Status
                     LogItem(bm.getBitView(), strLogFile);
 
-                    break;
                 }
             }
         }
@@ -288,36 +289,30 @@ int ossProcess(string strLogFile, bool VerboseMode)
         if(!isKilled)
         {
             // First fullfil any waiting requests in request queue
+/*
             s.Wait();
-
-            // Check the queue
-            if(ossHeader->request.Size() > 0)
-            {
-                ResourceRequests reqItem = ossHeader->request.Dequeue();
-                // Check if it's available
-                if(ossResourceDescriptors[reqItem.resourceID])
-
-            }
             s.Signal();
-
+*/
             // Receive a message if any available
-            if(msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), OSS_MQ_TYPE, IPC_NOWAIT))
+            if(msgrcv(msgid, (void *) &msg, sizeof(msg), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
             {
-                if(strcmp(msg.text, "Shutdown")==0)
+                cout << "OSS ####### Got Message: " << msg.action << " : " << msg.procIndex << " : " << msg.resIndex << endl;
+
+                if(msg.action==REQUEST_SHUTDOWN)
                 {
                     // Go through each resource
                     for(int i=0; i < DESCRIPTOR_COUNT; i++)
                     {
-//            cout << "####### In Shutdown " << i << endl;
+            cout << "OSS ####### In Shutdown " << i << endl;
                         // Find any resources held by this message and clear them out
                         for(vector<int>::iterator resItem = 
                             ossResourceDescriptors[i].allocatedProcs.begin(); 
                             resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
                         {
-                            if(*resItem == msg.index)
+                            if(*resItem == msg.procIndex)
                             {
                                 ossResourceDescriptors[i].allocatedProcs.erase(resItem);
-                                ossResourceDescriptors[i].countAllocated--;
+                                ossResourceDescriptors[i].countReleased++;
                             }
                         }
                         // Find any wait queue items for this item and clear them out
@@ -325,21 +320,57 @@ int ossProcess(string strLogFile, bool VerboseMode)
                             ossResourceDescriptors[i].waitingQueue.begin(); 
                             resItem != ossResourceDescriptors[i].waitingQueue.end(); ++resItem)
                         {
-                            if(*resItem == msg.index)
+                            if(*resItem == msg.procIndex)
                             {
                                 ossResourceDescriptors[i].waitingQueue.erase(resItem);
-                                ossResourceDescriptors[i].countRequested--;
                             }
                         }
-
                     }
                     // Send back the message to continue shutdown
-                    strcpy(msg.text, "SUCCESS");
-                    msg.type = msg.index;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), IPC_NOWAIT);
+                    msg.action = OK;
+                    msg.type = ossUserProcesses[msg.procIndex].pid;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                }
+                else if(msg.action==REQUEST_CREATE)
+                {
+            cout << "OSS ####### In Resource Get " << msg.procIndex << " : " << msg.resIndex << endl;
+                    ossResourceDescriptors[msg.resIndex].countRequested++;
+                    // Check if this resource is available, if so allocate
+                    if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
+                        ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
+                    {
+                        ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procIndex);
+                        ossResourceDescriptors[msg.resIndex].countAllocated++;
+                        // Send success message back
+                        msg.action = OK;
+                        msg.type = ossUserProcesses[msg.procIndex].pid;
+                        int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                    }
+                    else //  put in wait queue
+                    {
+                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procIndex);
+                        ossResourceDescriptors[msg.resIndex].countWaited++;
+                    }
+                }
+                else if(msg.action==REQUEST_DESTROY)
+                {
+                    cout << "OSS ####### In Resource Get " << msg.procIndex << " : " << msg.resIndex << endl;
+                    for(vector<int>::iterator resItem = 
+                        ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
+                        resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
+                    {
+                        if(*resItem == msg.procIndex)
+                        {
+                            ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
+                            ossResourceDescriptors[msg.resIndex].countReleased++;
+                        }
+                    }
+                    // Send success message back
+                    msg.action = OK;
+                    msg.type = ossUserProcesses[msg.procIndex].pid;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
                 }
             }
-
         }
 
         // ********************************************
