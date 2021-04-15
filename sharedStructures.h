@@ -201,7 +201,8 @@ void toggleByte(unsigned char* bitmap, int addr)
 // Returns a random number between two values
 int getRandomValue(int MinVal, int MaxVal)
 {
-    return rand()%MaxVal+MinVal;
+    int range = MaxVal-MinVal+1 ;
+    return rand()%range + MinVal ;
 }
 
 // Returns a random true/false based on the probability passed

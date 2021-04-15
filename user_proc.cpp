@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
         {
             if(vecOwnedResourceList.size() > 0)
             {
-                int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
+                int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size()-1);
 
                 cout << "PR &&& In Destroy: " << nPid << " : " << nItemToRemove << endl;
 
