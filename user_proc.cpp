@@ -183,7 +183,7 @@ int main(int argc, char* argv[])
 
             int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
 
-            cout << "PR &&& In Destroy: " << nPid << " : " << nItemToProcess << endl;
+            cout << "PR &&& In Destroy: " << nPid << " : " << nItemToRemove << endl;
 
             msg.type = OSS_MQ_TYPE;
             msg.action = REQUEST_DESTROY;
