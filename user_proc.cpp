@@ -180,24 +180,25 @@ int main(int argc, char* argv[])
 
         if(vecOwnedResourceList.size() > 0 && willCloseResource)
         {
+            if(vecOwnedResourceList.size() > 0)
+            {
+                int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
 
-            int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
+                cout << "PR &&& In Destroy: " << nPid << " : " << nItemToRemove << endl;
 
-            cout << "PR &&& In Destroy: " << nPid << " : " << nItemToRemove << endl;
+                msg.type = OSS_MQ_TYPE;
+                msg.action = REQUEST_DESTROY;
+                msg.procIndex = nPid;
+                msg.resIndex = vecOwnedResourceList[nItemToRemove];
+                int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
 
-            msg.type = OSS_MQ_TYPE;
-            msg.action = REQUEST_DESTROY;
-            msg.procIndex = nPid;
-            msg.resIndex = vecOwnedResourceList[nItemToRemove];
-            int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                // Once I get the reply back, remove the resource
+                msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
 
-            // Once I get the reply back, remove the resource
-            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
-
-            // Push the item to the owned resource vector
-//            if(msg.action == OK)
-//                vecOwnedResourceList.push_back(nItemToRemove);
-
+                // Push the item to the owned resource vector
+    //            if(msg.action == OK)
+    //                vecOwnedResourceList.push_back(nItemToRemove);
+            }
         }
         
     }
