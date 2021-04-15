@@ -336,17 +336,24 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 else if(msg.action==REQUEST_CREATE)
                 {
             cout << "OSS ####### In Resource Create " << msg.procIndex << " : " << msg.resIndex << endl;
+                    cout << "0" << endl;
                     ossResourceDescriptors[msg.resIndex].countRequested++;
+                    cout << ".5" << endl;
+
                     // Check if this resource is available, if so allocate
                     if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
                     {
+                        cout << "1" << endl;
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procIndex);
+                        cout << "2" << endl;
                         ossResourceDescriptors[msg.resIndex].countAllocated++;
+                        cout << "3" << endl;
                         // Send success message back
                         msg.action = OK;
                         msg.type = msg.procIndex;
                         int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                        cout << "4" << endl;
                     }
                     else //  put in wait queue
                     {
