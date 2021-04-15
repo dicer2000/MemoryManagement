@@ -147,10 +147,10 @@ int main(int argc, char* argv[])
             msg.type = OSS_MQ_TYPE;
             msg.action = REQUEST_SHUTDOWN;
             msg.procIndex = nPid;
-            int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+            int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
 
             // Once I get the reply back, we can continue to shutdown
-            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
+            msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
 
             return EXIT_SUCCESS;
         }
@@ -168,9 +168,9 @@ int main(int argc, char* argv[])
             msg.action = REQUEST_CREATE;
             msg.procIndex = nPid;
             msg.resIndex = nResource;
-            msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT); //IPC_NOWAIT
+            msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT); //IPC_NOWAIT
             // Wait for a response to come back
-            msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0);
+            msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0);
             // At this point, I now own the process
             cout << "PROC &&& Pushing new item" << endl;
             if(msg.action == OK)
@@ -190,10 +190,10 @@ int main(int argc, char* argv[])
                 msg.action = REQUEST_DESTROY;
                 msg.procIndex = nPid;
                 msg.resIndex = vecOwnedResourceList[nItemToRemove];
-                int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
 
                 // Once I get the reply back, remove the resource
-                msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
+                msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
 
                 // Push the item to the owned resource vector
     //            if(msg.action == OK)

@@ -294,7 +294,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
             s.Signal();
 */
             // Receive a message if any available
-            if(msgrcv(msgid, (void *) &msg, sizeof(msg), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
+            if(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
             {
                 cout << "OSS ####### Got Message: " << msg.action << " : " << msg.procIndex << " : " << msg.resIndex << endl;
 
@@ -331,7 +331,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     // Send back the message to continue shutdown
                     msg.action = OK;
                     msg.type = msg.procIndex;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                 }
                 else if(msg.action==REQUEST_CREATE)
                 {
@@ -352,7 +352,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         // Send success message back
                         msg.action = OK;
                         msg.type = msg.procIndex;
-                        int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                        int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                         cout << "4" << endl;
                     }
                     else //  put in wait queue
@@ -379,7 +379,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     // Send success message back
                     msg.action = OK;
                     msg.type = msg.procIndex;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                 }
             }
         }
@@ -405,7 +405,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 // Send success message back
                 msg.action = OK;
                 msg.type = nWaitingProc;
-                int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+                int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
             }
         }
 
