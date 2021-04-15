@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
             // Get the resource being requested
             int nResource = getRandomValue(0, DESCRIPTOR_COUNT-1);
 
-//            cout << "PR &&& In Request: " << time(NULL) << " = " << secondsStart << " : " << willShutdown << endl;
+            cout << "PR &&& In Request: " << nPid << " : " << nResource << endl;
 
             // Request a new resource
             msg.type = OSS_MQ_TYPE;
@@ -174,8 +174,7 @@ int main(int argc, char* argv[])
             // At this point, I now own the process
             cout << "PROC &&& Pushing new item" << endl;
             if(msg.action == OK)
-                vecOwnedResourceList.push_back(msg.resIndex);
-
+                vecOwnedResourceList.push_back(nResource);
             continue;
         }
 
