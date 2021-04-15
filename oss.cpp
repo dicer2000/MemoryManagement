@@ -315,6 +315,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                                 ossResourceDescriptors[i].countReleased++;
                             }
                         }
+                        /*
                         // Find any wait queue items for this item and clear them out
                         for(vector<int>::iterator resItem = 
                             ossResourceDescriptors[i].waitingQueue.begin(); 
@@ -325,15 +326,16 @@ int ossProcess(string strLogFile, bool VerboseMode)
                                 ossResourceDescriptors[i].waitingQueue.erase(resItem);
                             }
                         }
+                        */
                     }
                     // Send back the message to continue shutdown
                     msg.action = OK;
-                    msg.type = ossUserProcesses[msg.procIndex].pid;
+                    msg.type = msg.procIndex;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
                 }
                 else if(msg.action==REQUEST_CREATE)
                 {
-            cout << "OSS ####### In Resource Get " << msg.procIndex << " : " << msg.resIndex << endl;
+            cout << "OSS ####### In Resource Create " << msg.procIndex << " : " << msg.resIndex << endl;
                     ossResourceDescriptors[msg.resIndex].countRequested++;
                     // Check if this resource is available, if so allocate
                     if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
@@ -343,18 +345,19 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         ossResourceDescriptors[msg.resIndex].countAllocated++;
                         // Send success message back
                         msg.action = OK;
-                        msg.type = ossUserProcesses[msg.procIndex].pid;
+                        msg.type = msg.procIndex;
                         int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
                     }
                     else //  put in wait queue
                     {
-                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procIndex);
+                        ossResourceDescriptors[msg.resIndex].waitingQueue.push(msg.procIndex);
                         ossResourceDescriptors[msg.resIndex].countWaited++;
+            cout << "OSS ####### WAIT for Resource " << msg.procIndex << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
                     }
                 }
                 else if(msg.action==REQUEST_DESTROY)
                 {
-                    cout << "OSS ####### In Resource Get " << msg.procIndex << " : " << msg.resIndex << endl;
+                    cout << "OSS ####### In Resource Destroy " << msg.procIndex << " : " << msg.resIndex << endl;
                     for(vector<int>::iterator resItem = 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
                         resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
@@ -363,83 +366,67 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         {
                             ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
                             ossResourceDescriptors[msg.resIndex].countReleased++;
+                            break;
                         }
                     }
                     // Send success message back
                     msg.action = OK;
-                    msg.type = ossUserProcesses[msg.procIndex].pid;
+                    msg.type = msg.procIndex;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
                 }
             }
         }
+        
+        // ********************************************
+        // Move Waiting Resource Requests into Freed Areas if avail
+        // ********************************************
+
+        // Loop through each resource to see if there is any room
+        // available and that there is a waiting resource
+        for(int i=0; i < DESCRIPTOR_COUNT; i++)
+        {
+            if(ossResourceDescriptors[i].countTotalResources >
+                ossResourceDescriptors[i].allocatedProcs.size() &&
+                ossResourceDescriptors[i].waitingQueue.size() > 0)
+            {
+                // Just take the top one off and insert it (for now)
+                int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
+                ossResourceDescriptors[i].waitingQueue.pop();
+            cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
+                ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
+                ossResourceDescriptors[i].countAllocated++;
+                // Send success message back
+                msg.action = OK;
+                msg.type = nWaitingProc;
+                int n = msgsnd(msgid, (void *) &msg, sizeof(msg), IPC_NOWAIT);
+            }
+        }
 
         // ********************************************
-        // Dispatch processes to run on round-robin basis
-        // Gather Stats
+        // Check for Deadlocks
         // ********************************************
-        // For figuring out Idle Time
+        // For each process class, check for deadlocks, if one
+        // found find a victim and kill it
         /*
-        if(readyQueue.empty())
+        for(int i=0; i < DESCRIPTOR_COUNT; i++)
         {
-            nCPU_IdleTime += 1;
-        }
-        // Now, really process the Dispatches
-        else if(!isKilled)
-        {
-            // Get next item from the ready queue
-            int nIndexToNextChildProcessing = readyQueue.front();  
-            readyQueue.pop();
-            // Check for bit set
-            if(bm.getBitmapBits(nIndexToNextChildProcessing))
+
+            if(deadlock(&ossResourceDescriptors[i].allocatedProcs[0],
+                countTotalResources,
+                ossResourceDescriptors[i].allocatedProcs.size(),
+                ))
             {
-                cout << endl << "####### Dispatching #######" << endl;
-                LogItem("OSS  ", ossHeader->simClockSeconds,
-                    ossHeader->simClockNanoseconds, "Dispatching process", 
-                    ossUserProcesses[nIndexToNextChildProcessing].pid,
-                    nIndexToNextChildProcessing, strLogFile);
+                // Deadlock found, remove an item.  We'll keep doing
+                // this until no deadlocks are detected
+                int resToRemove = 
+                    ossResourceDescriptors[i].allocatedProcs.back();
 
-                // Dispatch it
-                strcpy(msg.text, "Dispatch");
-                msg.type = ossUserProcesses[nIndexToNextChildProcessing].pid;
-                int n = msgsnd(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), 0);
-                //------------------------------------
-                // Message sent, waiting for response
-                //------------------------------------
-                msgrcv(msgid, (void *) &msg, sizeof(struct message) - sizeof(long), OSS_MQ_TYPE, 0); 
-//                cout << "OSS: from child: " << msg.text << endl;
-
-                // Child shutting down, so handle
-                if(strcmp(msg.text, "Shutdown")==0)
-                {
-                    // Turns out we don't do much.  This is handled by the PID closing
-                }
-                else if(strcmp(msg.text, "Block")==0)
-                {
-                    LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "Pushed item to blocked list", 
-                        ossUserProcesses[nIndexToNextChildProcessing].pid,
-                        nIndexToNextChildProcessing, strLogFile);
-                    // Put on Block List
-                    blockedList.push_back(nIndexToNextChildProcessing);
-
-                }
-                else
-                {
-                    // Full Quantum Run, just requeue and keep going
-                    readyQueue.push(nIndexToNextChildProcessing);
-                }
+                    ossResourceDescriptors[i].allocatedProcs.pop_back();
+                    ossResourceDescriptors[i].countReleased++;
+              
             }
+
         }
-            // Per the directions advance the timer by 1.xx seconds
-            ossHeader->simClockSeconds++;
-            ossHeader->simClockNanoseconds += getRandomValue(0, 1000);
-
-            // Manage the Timers
-            if(ossHeader->simClockNanoseconds > 1000000000) // A second has passed
-            {
-                ossHeader->simClockNanoseconds = ossHeader->simClockNanoseconds - 1000000000;
-                ossHeader->simClockSeconds++;
-            }
         */
     } // End of main loop
 

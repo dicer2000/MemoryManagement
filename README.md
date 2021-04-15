@@ -52,5 +52,7 @@ The biggest problem experienced
 - 4/9/2021 - Created the control semaphore; Debugging; Created main loop of oss; created main loop of user_proc; Debugging
 - 4/10/2021 - Re-writing the request mechanism; Resource Request vector; Debugging
 - 4/11/2021 - Testing; Putting requests in shared memory
+- 4/12/2021 - Continued testing
+- 4/14/2021 - Testing; Keeping track of processes that are closing; Setting up Deadlock testing
 
 *©2021 Brett W. Huffman*

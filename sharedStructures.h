@@ -28,6 +28,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <queue>
 #include <sys/ipc.h> 
 #include <sys/msg.h> 
 #include <string.h>
@@ -51,7 +52,7 @@ struct OssHeader {
 
 struct ResourceDescriptors {
     std::vector<int> allocatedProcs;
-    std::vector<int> waitingQueue;
+    std::queue<int> waitingQueue;
     int  countTotalResources;
     int  countRequested;
     int  countAllocated;

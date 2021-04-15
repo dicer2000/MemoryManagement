@@ -16,6 +16,7 @@
 #include <fstream>
 #include <stdlib.h>
 #include <time.h>
+#include "deadlock.h"
 
 // Forward declarations
 static void show_usage(std::string);
@@ -125,10 +126,9 @@ int main(int argc, char* argv[])
     // Loop forever, the first if statement will handle controlled shutdown
     while(true)
     {
-
         // Set probabilities for this round
         bool willRequestResource = getRandomProbability(0.015f);
-        bool willCloseResource = getRandomProbability(0.015f);
+        bool willCloseResource = getRandomProbability(0.15f);
         bool willShutdown = getRandomProbability(0.50f);
         
         // Shut down => signal to OSS to release resources and remove (Only after at least 1 second)
@@ -178,11 +178,13 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        if(vecOwnedResourceList.size() > 0 && time(NULL) - secondsStart > 1 && willCloseResource)
+        if(vecOwnedResourceList.size() > 0 && willCloseResource)
         {
 
-//            cout << "PR &&& In Destroy: " << " : " << nItemToProcess << endl;
             int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size());
+
+            cout << "PR &&& In Destroy: " << nPid << " : " << nItemToProcess << endl;
+
             msg.type = OSS_MQ_TYPE;
             msg.action = REQUEST_DESTROY;
             msg.procIndex = nPid;
@@ -193,8 +195,8 @@ int main(int argc, char* argv[])
             msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0); 
 
             // Push the item to the owned resource vector
-            if(msg.action == OK)
-                vecOwnedResourceList.push_back(nItemToRemove);
+//            if(msg.action == OK)
+//                vecOwnedResourceList.push_back(nItemToRemove);
 
         }
         
