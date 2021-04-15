@@ -172,6 +172,7 @@ int main(int argc, char* argv[])
             // Wait for a response to come back
             msgrcv(msgid, (void *) &msg, sizeof(msg), nPid, 0);
             // At this point, I now own the process
+            cout << "PROC &&& Pushing new item" << endl;
             if(msg.action == OK)
                 vecOwnedResourceList.push_back(msg.resIndex);
 
