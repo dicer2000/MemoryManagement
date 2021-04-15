@@ -341,8 +341,11 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
                     {
+                        cout << "1" << endl;
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procIndex);
+                        cout << "2" << endl;
                         ossResourceDescriptors[msg.resIndex].countAllocated++;
+                        cout << "3" << endl;
                         // Send success message back
                         msg.action = OK;
                         msg.type = msg.procIndex;
