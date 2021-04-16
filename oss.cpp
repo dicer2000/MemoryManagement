@@ -385,7 +385,6 @@ cout << "Got here 3" << endl;
                 }
             }
         }
-cout << "Got here 4" << endl;
         
         // ********************************************
         // Move Waiting Resource Requests into Freed Areas if avail
@@ -399,6 +398,7 @@ cout << "Got here 4" << endl;
                 ossResourceDescriptors[i].allocatedProcs.size() &&
                 ossResourceDescriptors[i].waitingQueue.size() > 0)
             {
+cout << "Got here 4" << endl;
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
                 ossResourceDescriptors[i].waitingQueue.pop();
