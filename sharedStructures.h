@@ -34,6 +34,7 @@
 #include <string.h>
 #include <stdarg.h>  // For va_start, etc.
 #include "productSemaphores.h"
+#include <assert.h>
 
 //***************************************************
 // Enums
