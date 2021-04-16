@@ -199,7 +199,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 }
             }
         }
-
+cout << "Got here 1" << endl;
         // ********************************************
         // Handle Ctrl-C or End Of Simulation
         // ********************************************
@@ -236,6 +236,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
             }
         }
 
+cout << "Got here 2" << endl;
 
         // ********************************************
         // Handle Child Shutdowns
@@ -282,6 +283,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
             cout << waitPID << " stopped by signal " << WTERMSIG(wstatus) << endl;
         } else if (WIFCONTINUED(wstatus) && waitPID > 0) {
         }
+cout << "Got here 3" << endl;
 
         // ********************************************
         // Manage Resource Requests
@@ -383,6 +385,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 }
             }
         }
+cout << "Got here 4" << endl;
         
         // ********************************************
         // Move Waiting Resource Requests into Freed Areas if avail
@@ -408,6 +411,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
             }
         }
+cout << "Got here 5" << endl;
 
         // ********************************************
         // Check for Deadlocks
