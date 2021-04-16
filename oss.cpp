@@ -401,6 +401,7 @@ cout << "Got here 3" << endl;
 cout << "Got here 4" << endl;
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
+cout << "Got here 4.1" << endl;
                 ossResourceDescriptors[i].waitingQueue.pop();
             cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
