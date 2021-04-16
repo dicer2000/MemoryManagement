@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
     string strLogFile = argv[2];
 
     // The list of resources the process owns
-//    vector<int> vecOwnedResourceList;
+    vector<int> vecOwnedResourceList;
 
     cout << "&&& New: " << nItemToProcess << " : " << strLogFile << endl;
 
@@ -177,12 +177,12 @@ int main(int argc, char* argv[])
         cout << "2" << endl;
             // At this point, I now own the process
             cout << "PROC &&& Pushing new item" << endl;
-//            if(msg.action == OK)
-//                vecOwnedResourceList.push_back(nResource);
+            if(msg.action == OK)
+                vecOwnedResourceList.push_back(nResource);
             continue;
         }
 
-/*
+
         if(vecOwnedResourceList.size() > 0 && willCloseResource)
         {
             if(vecOwnedResourceList.size() > 0)
@@ -201,11 +201,11 @@ int main(int argc, char* argv[])
                 msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
 
                 // Push the item to the owned resource vector
-    //            if(msg.action == OK)
-    //                vecOwnedResourceList.push_back(nItemToRemove);
+                if(msg.action == OK)
+                    vecOwnedResourceList.push_back(nItemToRemove);
             }
         }
-*/
+
     }
 }
 
