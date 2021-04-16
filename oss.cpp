@@ -199,7 +199,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 }
             }
         }
-cout << "Got here 1" << endl;
+
         // ********************************************
         // Handle Ctrl-C or End Of Simulation
         // ********************************************
@@ -236,7 +236,7 @@ cout << "Got here 1" << endl;
             }
         }
 
-cout << "Got here 2" << endl;
+
 
         // ********************************************
         // Handle Child Shutdowns
@@ -283,7 +283,6 @@ cout << "Got here 2" << endl;
             cout << waitPID << " stopped by signal " << WTERMSIG(wstatus) << endl;
         } else if (WIFCONTINUED(wstatus) && waitPID > 0) {
         }
-cout << "Got here 3" << endl;
 
         // ********************************************
         // Manage Resource Requests
@@ -402,6 +401,7 @@ cout << "Got here 4 : " << ossResourceDescriptors[i].waitingQueue.size() << endl
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
 cout << "Got here 4.1" << endl;
+
                 assert(!ossResourceDescriptors[i].waitingQueue.empty());
                 ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
 //                ossResourceDescriptors[i].waitingQueue.pop();
@@ -414,7 +414,6 @@ cout << "Got here 4.1" << endl;
                 int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
             }
         }
-cout << "Got here 5" << endl;
 
         // ********************************************
         // Check for Deadlocks
