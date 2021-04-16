@@ -370,14 +370,17 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
                         resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
                     {
+                        cout << "Des 1: " << *resItem << " : " << msg.procIndex << endl;
                         if(*resItem == msg.procIndex)
                         {
                             ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
+                        cout << "Des 2: " << *resItem << " : " << msg.procIndex << endl;
                             ossResourceDescriptors[msg.resIndex].countReleased++;
                             break;
                         }
                     }
                     // Send success message back
+                    cout << "Des 3"  << endl;
                     msg.action = OK;
                     msg.type = msg.procIndex;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
