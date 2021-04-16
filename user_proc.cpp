@@ -200,9 +200,13 @@ int main(int argc, char* argv[])
                 // Once I get the reply back, remove the resource
                 msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
 
+
                 // Push the item to the owned resource vector
                 if(msg.action == OK)
-                    vecOwnedResourceList.push_back(nItemToRemove);
+                {
+//                    cout << "PR dest: " << vecOwnedResourceList.begin()+nItemToRemove << endl;
+                    vecOwnedResourceList.erase(vecOwnedResourceList.begin()+nItemToRemove);
+                }
             }
         }
 
