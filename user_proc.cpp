@@ -168,13 +168,10 @@ int main(int argc, char* argv[])
             msg.action = REQUEST_CREATE;
             msg.procIndex = nPid;
             msg.resIndex = nResource;
-        cout << "0" << endl;
 
             msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT); //IPC_NOWAIT
-        cout << "1" << endl;
             // Wait for a response to come back
             msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0);
-        cout << "2" << endl;
             // At this point, I now own the process
             cout << "PROC &&& Pushing new item" << endl;
             if(msg.action == OK)

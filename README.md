@@ -40,8 +40,13 @@ To run the program, use the oss command.  You can use any of the command line op
 
 ## Problems / Issues
 
-The biggest problem experienced 
+The biggest problems experienced in this project was around Segmentation Faults I was getting when working with all the vectors and arrays.  I develop on a Mac, then move my code to the Hoare.  I find my environment a lot more helpful to develop in that way.
 
+However, one big problem with doing that is that there are environmental differences.  This problem seems to be around those differences.  The Mac implementation of erasing vector entries must do some bounds checking.  While the Linux version does not.  When I moved my code over to Hoare, it continually failed due to Segmentation errors.
+
+What I found that indeed, there were problems with me properly checking bounds.  I had to do lots of trial and error to find it, however.
+
+Thank goodness for Assert!
 
 ## Work Log
 
@@ -54,5 +59,6 @@ The biggest problem experienced
 - 4/11/2021 - Testing; Putting requests in shared memory
 - 4/12/2021 - Continued testing
 - 4/14/2021 - Testing; Keeping track of processes that are closing; Setting up Deadlock testing
+- 4/15/2021 - Fixing errors with Segmentation Faults; Continued timing and testing
 
 *©2021 Brett W. Huffman*

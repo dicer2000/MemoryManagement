@@ -96,7 +96,7 @@ const key_t KEY_MUTEX = 0x54321;
 // The size of our product queue
 const int maxTimeToRunInSeconds = 3;
 
-const int PROC_QUEUE_LENGTH = 1; //18;
+const int PROC_QUEUE_LENGTH = 18;
 const int DESCRIPTOR_COUNT = 18;
 const char* ChildProcess = "./user_proc";
 const int maxTimeBetweenNewProcsNS = 10;
