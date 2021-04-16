@@ -359,7 +359,7 @@ cout << "Got here 3" << endl;
                     }
                     else //  put in wait queue
                     {
-                        ossResourceDescriptors[msg.resIndex].waitingQueue.push(msg.procIndex);
+                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procIndex);
                         ossResourceDescriptors[msg.resIndex].countWaited++;
             cout << "OSS ####### WAIT for Resource " << msg.procIndex << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
                     }
@@ -398,11 +398,13 @@ cout << "Got here 3" << endl;
                 ossResourceDescriptors[i].allocatedProcs.size() &&
                 ossResourceDescriptors[i].waitingQueue.size() > 0)
             {
-cout << "Got here 4" << endl;
+cout << "Got here 4 : " << ossResourceDescriptors[i].waitingQueue.size() << endl;
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
 cout << "Got here 4.1" << endl;
-                ossResourceDescriptors[i].waitingQueue.pop();
+                assert(!ossResourceDescriptors[i].waitingQueue.empty());
+                ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
+//                ossResourceDescriptors[i].waitingQueue.pop();
             cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
                 ossResourceDescriptors[i].countAllocated++;

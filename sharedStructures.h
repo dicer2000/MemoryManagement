@@ -52,7 +52,7 @@ struct OssHeader {
 
 struct ResourceDescriptors {
     std::vector<int> allocatedProcs;
-    std::queue<int> waitingQueue;
+    std::vector<int> waitingQueue;
     int  countTotalResources;
     int  countRequested;
     int  countAllocated;
