@@ -46,6 +46,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
     queue<int> readyQueue;
     list<int> blockedList;
 
+    // Pid used throughout child
+    const pid_t nPid = getpid();
+
+    // Seed the randomizer with the PID
+    srand(time(0) ^ nPid);
+
     // Start Time for time Analysis
     // Get the time in seconds for our process to make
     // sure we don't exceed the max amount of processing time
@@ -137,17 +143,25 @@ int ossProcess(string strLogFile, bool VerboseMode)
     memset(ossHeader->requestMatrix, 0, sizeof(ossHeader->requestMatrix));
     memset(ossHeader->allocatedMatrix, 0, sizeof(ossHeader->allocatedMatrix));
 
-//isShutdown = true;
     // Setup all Descriptors per instructions
     for(int i=0; i < RESOURCES_MAX && !isShutdown; i++)
     {
         // First decide if > 1 item is allowed (20% of the time)
         if(getRandomProbability(0.20f))
-            ossResourceDescriptors[i].countTotalResources = getRandomValue(2, 10);
+        {
+            // Set both the availability Matrix and the Vector version
+            ossHeader->availabilityMatrix[i] = ossResourceDescriptors[i].countTotalResources = getRandomValue(2, 10);
+        }
         else
-            ossResourceDescriptors[i].countTotalResources = 1;
+        {
+            // Set both the allocation Matrix and the Vector version
+            ossHeader->availabilityMatrix[i] = ossResourceDescriptors[i].countTotalResources = 1;
+        }
     }
 
+    // For debugging
+//    Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
+//    isShutdown=true;
 
     // Start of main loop that will do the following
     // - Handle oss shutdown
@@ -367,6 +381,9 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     {
                         ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procPid);
                         ossResourceDescriptors[msg.resIndex].countWaited++;
+                        // Update the requestMatrix
+                        int nNewVal = Get1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
+                        Set1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
             cout << "OSS ####### WAIT for Resource " << msg.procPid << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
                     }
                 }
@@ -418,7 +435,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                 assert(!ossResourceDescriptors[i].waitingQueue.empty());
                 ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
-//                ossResourceDescriptors[i].waitingQueue.pop();
+
             cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
                 ossResourceDescriptors[i].countAllocated++;
@@ -433,10 +450,13 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                 if(nIndex > -1)
                 {
-                // Update our matrix
-//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
+                // Update our Matrices - Allocated & Request
+
+                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
                 int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
                 Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
+                nNewVal = Get1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX);
+                Set1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX, nNewVal-1);
                 }
 
                 // Send success message back
@@ -449,6 +469,33 @@ int ossProcess(string strLogFile, bool VerboseMode)
         // ********************************************
         // Check for Deadlocks
         // ********************************************
+        // Using the deadlock detection algorithms to find the deadlock
+        int nDeadlockProcess = deadlock(ossHeader->availabilityMatrix, 
+        PROCESSES_MAX, RESOURCES_MAX, ossHeader->requestMatrix, ossHeader->allocatedMatrix);
+
+        // Deadlock found, release a resource from this process
+        if(nDeadlockProcess > -1)
+        {
+            cout << "******** DDDDEADLOCK ********: " << nDeadlockProcess << endl;
+            Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
+            cout << endl;
+            Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+//            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+//sleep(3);
+//isShutdown=true;
+/*
+            for(vector<int>::iterator resItem = 
+                ossResourceDescriptors[i].allocatedProcs.begin(); 
+                resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
+            {
+                if(*resItem == msg.procPid)
+                {
+                    
+
+                }
+            }
+*/
+        }
         // For each process class, check for deadlocks, if one
         // found find a victim and kill it
         /*

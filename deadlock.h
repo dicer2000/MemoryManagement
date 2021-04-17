@@ -24,7 +24,9 @@ bool req_lt_avail ( const int * req, const int * avail, const int pnum,
     return ( i == num_res );
 }
 
-bool deadlock ( const int * available, const int m, const int n,
+// Deadlock process - modified from the original to return one of the
+// deadlocked processes should one be detected
+int deadlock ( const int * available, const int m, const int n,
     const int * request, const int * allocated )
 {
     int work[m]; // m resources
@@ -52,7 +54,11 @@ bool deadlock ( const int * available, const int m, const int n,
     for ( p = 0; p < n; p++ )
         if ( ! finish[p] )
             break;
-    return ( p != n );
+
+//    return ( p != n );  // True is a deadlock
+
+    return ( p == n ? -1 : p);   // -1 is no deadlock, otherwise send a process
+                                // in deadlock that should have a resource released
 }
 
 #endif // DEADLOCK_H

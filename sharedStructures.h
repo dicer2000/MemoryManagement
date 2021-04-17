@@ -61,9 +61,9 @@ struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
     int simClockNanoseconds; // System Clock - Nanoseconds
     
-    int availabilityMatrix[PROCESSES_MAX * RESOURCES_MAX];
-    int requestMatrix[PROCESSES_MAX * RESOURCES_MAX];
     int allocatedMatrix[PROCESSES_MAX * RESOURCES_MAX];
+    int availabilityMatrix[RESOURCES_MAX];
+    int requestMatrix[PROCESSES_MAX * RESOURCES_MAX];
 };
 
 struct ResourceDescriptors {
