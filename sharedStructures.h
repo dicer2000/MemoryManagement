@@ -37,6 +37,17 @@
 #include <assert.h>
 
 //***************************************************
+// Important Program Constants
+//***************************************************
+
+// The size of our product queue
+const int maxTimeToRunInSeconds = 3;
+
+const int PROCESSES_MAX = 40;
+const int RESOURCES_MAX = 18;
+const char* ChildProcess = "./user_proc";
+
+//***************************************************
 // Enums
 //***************************************************
 
@@ -49,6 +60,10 @@ enum RequestType { REQUEST_CREATE, REQUEST_DESTROY, REQUEST_SHUTDOWN, OK };
 struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
     int simClockNanoseconds; // System Clock - Nanoseconds
+    
+    int availabilityMatrix[PROCESSES_MAX * RESOURCES_MAX];
+    int requestMatrix[PROCESSES_MAX * RESOURCES_MAX];
+    int allocatedMatrix[PROCESSES_MAX * RESOURCES_MAX];
 };
 
 struct ResourceDescriptors {
@@ -78,6 +93,7 @@ const key_t KEY_MESSAGE_QUEUE = 0x54324;
 struct message {
     long type;
     int  action;
+    int  procPid;
     int  procIndex;
     int  resIndex;
 } msg;
@@ -89,24 +105,35 @@ const long OSS_MQ_TYPE = 1000;
 //***************************************************
 const key_t KEY_MUTEX = 0x54321;
 
-//***************************************************
-// Important Program Constants
-//***************************************************
-
-// The size of our product queue
-const int maxTimeToRunInSeconds = 3;
-
-const int PROC_QUEUE_LENGTH = 18;
-const int DESCRIPTOR_COUNT = 18;
-const char* ChildProcess = "./user_proc";
-const int maxTimeBetweenNewProcsNS = 10;
-const int maxTimeBetweenNewProcsSecs = 10;
-const int fullTransactionTimeInNS = 10000000;
-const float percentageCPU = 0.9f;   // Higher numbers give more CPU Processes
-
 /***************************************************
  * Helper Functions
  * *************************************************/
+
+void Print1DArray(const int* nArray, const int nArraySize, const int nCols)
+{
+    // Print the entire array in 2D
+    for(int i = 0; i < nArraySize/nCols; i++)
+    {
+        for(int j = 0; j < nCols; j++)
+            std::cout << nArray[i * nCols + j] << " ";
+        std::cout << std::endl;
+    }
+}
+// Gets the value of an int in a 1D array based on columns and rows
+int Get1DArrayValue(const int* nArray, const int nRow, const int nCol, const int nTotalCols)
+{
+//    cout << 
+//    assert(sizeof(nArray) >= (nRow * nColMax + nCol)*sizeof(int));
+    return nArray[nRow * nTotalCols + nCol];
+}
+
+// Sets the value of an int in a 1D array based on columns and rows
+void Set1DArrayValue(int* nArray, const int nRow, const int nCol, const int nTotalCols, int newValue)
+{
+//    assert(sizeof(nArray) >= (nRow * nColMax + nCol)*sizeof(int));
+
+    nArray[nRow * nTotalCols + nCol] = newValue;
+}
 
 // For time formatting used throughout both programs
 std::string GetTimeFormatted(const char* prePendString)

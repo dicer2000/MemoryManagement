@@ -62,7 +62,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
 
     // Bitmap object for keeping track of children
-    bitmapper bm(PROC_QUEUE_LENGTH);
+    bitmapper bm(PROCESSES_MAX);
 
     // Register SIGINT handling
     signal(SIGINT, sigintHandler);
@@ -102,9 +102,9 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Setup shared memory
     // allocate a shared memory segment with size of 
     // Product Header + entire Product array
-    int memSize = sizeof(OssHeader) + 
-        (sizeof(UserProcesses) * PROC_QUEUE_LENGTH) +
-        (sizeof(ResourceDescriptors) * DESCRIPTOR_COUNT);
+    int memSize = sizeof(struct OssHeader) + 
+        (sizeof(struct UserProcesses) * PROCESSES_MAX) +
+        (sizeof(struct ResourceDescriptors) * RESOURCES_MAX);
     shm_id = shmget(KEY_SHMEM, memSize, IPC_CREAT | IPC_EXCL | 0660);
     if (shm_id == -1) {
         perror("OSS: Error allocating shared memory");
@@ -117,12 +117,13 @@ int ossProcess(string strLogFile, bool VerboseMode)
         perror("OSS: Error attaching shared memory");
         exit(EXIT_FAILURE);
     }
+
     // Get the queue header
     ossHeader = (struct OssHeader*) (shm_addr);
     // Get our entire queue
-    ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(OssHeader));
+    ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(struct OssHeader));
     // Get our entire queue
-    ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(ossUserProcesses)*PROC_QUEUE_LENGTH));
+    ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(struct UserProcesses)*PROCESSES_MAX));
 
     // Index to Item Currently Processing - Start at nothing processing
     int nIndexToCurrentChildProcessing = -1;
@@ -131,8 +132,14 @@ int ossProcess(string strLogFile, bool VerboseMode)
     ossHeader->simClockSeconds = 0;
     ossHeader->simClockNanoseconds = 0;
 
+    // Zero-out all the arrays
+    memset(ossHeader->availabilityMatrix, 0, sizeof(ossHeader->availabilityMatrix));
+    memset(ossHeader->requestMatrix, 0, sizeof(ossHeader->requestMatrix));
+    memset(ossHeader->allocatedMatrix, 0, sizeof(ossHeader->allocatedMatrix));
+
+//isShutdown = true;
     // Setup all Descriptors per instructions
-    for(int i=0; i < DESCRIPTOR_COUNT; i++)
+    for(int i=0; i < RESOURCES_MAX && !isShutdown; i++)
     {
         // First decide if > 1 item is allowed (20% of the time)
         if(getRandomProbability(0.20f))
@@ -165,7 +172,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
             // Check if there is room for new processes
             // in the bitmap structure
             int nIndex = 0;
-            for(;nIndex < PROC_QUEUE_LENGTH; nIndex++)
+            for(;nIndex < PROCESSES_MAX; nIndex++)
             {
                 if(!bm.getBitmapBits(nIndex))
                 {
@@ -210,7 +217,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
         {
             isKilled = true;
             // Send signal for every child process to terminate
-            for(int nIndex=0;nIndex<PROC_QUEUE_LENGTH;nIndex++)
+            for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
                 // Send signal to close if they are in-process
                 if(bm.getBitmapBits(nIndex))
@@ -259,7 +266,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
 //            cout << "O: ********************* Exited: " << waitPID << endl;
 
             // Find the PID and remove it from the bitmap
-            for(int nIndex=0;nIndex<PROC_QUEUE_LENGTH;nIndex++)
+            for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
                 if(ossUserProcesses[nIndex].pid == waitPID)
                 {
@@ -297,12 +304,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
             // Receive a message if any available
             if(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
             {
-                cout << "OSS ####### Got Message: " << msg.action << " : " << msg.procIndex << " : " << msg.resIndex << endl;
+                cout << "OSS ####### Got Message: " << msg.action << " : " << msg.procPid << " : " << msg.resIndex << endl;
 
                 if(msg.action==REQUEST_SHUTDOWN)
                 {
                     // Go through each resource
-                    for(int i=0; i < DESCRIPTOR_COUNT; i++)
+                    for(int i=0; i < RESOURCES_MAX; i++)
                     {
             cout << "OSS ####### In Shutdown " << i << endl;
                         // Find any resources held by this message and clear them out
@@ -310,7 +317,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                             ossResourceDescriptors[i].allocatedProcs.begin(); 
                             resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
                         {
-                            if(*resItem == msg.procIndex)
+                            if(*resItem == msg.procPid)
                             {
                                 ossResourceDescriptors[i].allocatedProcs.erase(resItem);
                                 ossResourceDescriptors[i].countReleased++;
@@ -331,49 +338,62 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     }
                     // Send back the message to continue shutdown
                     msg.action = OK;
-                    msg.type = msg.procIndex;
+                    msg.type = msg.procPid;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                 }
                 else if(msg.action==REQUEST_CREATE)
                 {
-            cout << "OSS ####### In Resource Create " << msg.procIndex << " : " << msg.resIndex << endl;
+            cout << "OSS ####### In Resource Create " << msg.procPid << " : " << msg.resIndex << endl;
                     ossResourceDescriptors[msg.resIndex].countRequested++;
 
                     // Check if this resource is available, if so allocate
                     if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
                     {
-                        ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procIndex);
-                        ossResourceDescriptors[msg.resIndex].countAllocated++;
+                        ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procPid);
+                        ossResourceDescriptors[msg.resIndex].countAllocated++;    
+                    
+                        // Update our matrix
+                        int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
+                        Set1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
+//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+
                         // Send success message back
                         msg.action = OK;
-                        msg.type = msg.procIndex;
+                        msg.type = msg.procPid;
                         int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                     }
                     else //  put in wait queue
                     {
-                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procIndex);
+                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procPid);
                         ossResourceDescriptors[msg.resIndex].countWaited++;
-            cout << "OSS ####### WAIT for Resource " << msg.procIndex << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
+            cout << "OSS ####### WAIT for Resource " << msg.procPid << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
                     }
                 }
                 else if(msg.action==REQUEST_DESTROY)
                 {
-                    cout << "OSS ####### In Resource Destroy " << msg.procIndex << " : " << msg.resIndex << endl;
+                    cout << "OSS ####### In Resource Destroy " << msg.procPid << " : " << msg.resIndex << endl;
                     for(vector<int>::iterator resItem = 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
                         resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
                     {
-                        if(*resItem == msg.procIndex)
+                        if(*resItem == msg.procPid)
                         {
                             ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
                             ossResourceDescriptors[msg.resIndex].countReleased++;
+
+//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+
+                            // Decrement the matrix
+                            int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
+                            Set1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, max(nNewVal-1, 0));
+
                             break;
                         }
                     }
                     // Send success message back
                     msg.action = OK;
-                    msg.type = msg.procIndex;
+                    msg.type = msg.procPid;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                 }
             }
@@ -385,16 +405,16 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
         // Loop through each resource to see if there is any room
         // available and that there is a waiting resource
-        for(int i=0; i < DESCRIPTOR_COUNT; i++)
+        for(int i=0; i < RESOURCES_MAX; i++)
         {
             if(ossResourceDescriptors[i].countTotalResources >
                 ossResourceDescriptors[i].allocatedProcs.size() &&
                 ossResourceDescriptors[i].waitingQueue.size() > 0)
             {
-cout << "Got here 4 : " << ossResourceDescriptors[i].waitingQueue.size() << endl;
+//cout << "Got here 4 : " << ossResourceDescriptors[i].waitingQueue.size() << endl;
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
-cout << "Got here 4.1" << endl;
+//cout << "Got here 4.1" << endl;
 
                 assert(!ossResourceDescriptors[i].waitingQueue.empty());
                 ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
@@ -402,6 +422,23 @@ cout << "Got here 4.1" << endl;
             cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
                 ossResourceDescriptors[i].countAllocated++;
+
+                // Find the Proc Index from the PID
+                int nIndex = -1;
+                for(int j=0; j < PROCESSES_MAX; j++)
+                {
+                    if(ossUserProcesses[j].pid == nWaitingProc)
+                        nIndex = j;
+                }
+
+                if(nIndex > -1)
+                {
+                // Update our matrix
+//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
+                int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
+                Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
+                }
+
                 // Send success message back
                 msg.action = OK;
                 msg.type = nWaitingProc;
@@ -478,6 +515,7 @@ cout << "Got here 4.1" << endl;
     // Success!
     return EXIT_SUCCESS;
 }
+
 
 // ForkProcess - fork a process and return the PID
 int forkProcess(string strProcess, string strLogFile, int nArrayItem)

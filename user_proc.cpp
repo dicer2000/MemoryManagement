@@ -114,9 +114,9 @@ int main(int argc, char* argv[])
     // Get the queue header
     struct OssHeader* ossHeader = (struct OssHeader*) (shm_addr);
     // Get our entire queue
-    struct UserProcesses* ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(OssHeader));
+    struct UserProcesses* ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(struct OssHeader));
     // Get our entire queue
-    struct ResourceDescriptors* ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(ossUserProcesses)*PROC_QUEUE_LENGTH));
+    struct ResourceDescriptors* ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(struct UserProcesses)*PROCESSES_MAX));
 
     // Log a new process started
     LogItem("PROC ", ossHeader->simClockSeconds,
@@ -146,7 +146,8 @@ int main(int argc, char* argv[])
             // all the resources, then exit cleanly
             msg.type = OSS_MQ_TYPE;
             msg.action = REQUEST_SHUTDOWN;
-            msg.procIndex = nPid;
+            msg.procIndex = nItemToProcess;
+            msg.procPid = nPid;
             int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
 
             // Once I get the reply back, we can continue to shutdown
@@ -159,14 +160,15 @@ int main(int argc, char* argv[])
         if(willRequestResource)
         {
             // Get the resource being requested
-            int nResource = getRandomValue(0, DESCRIPTOR_COUNT-1);
+            int nResource = getRandomValue(0, RESOURCES_MAX-1);
 
             cout << "PR &&& In Request: " << nPid << " : " << nResource << endl;
 
             // Request a new resource
             msg.type = OSS_MQ_TYPE;
             msg.action = REQUEST_CREATE;
-            msg.procIndex = nPid;
+            msg.procIndex = nItemToProcess;
+            msg.procPid = nPid;
             msg.resIndex = nResource;
 
             msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT); //IPC_NOWAIT
@@ -190,7 +192,8 @@ int main(int argc, char* argv[])
 
                 msg.type = OSS_MQ_TYPE;
                 msg.action = REQUEST_DESTROY;
-                msg.procIndex = nPid;
+                msg.procIndex = nItemToProcess;
+                msg.procPid = nPid;
                 msg.resIndex = vecOwnedResourceList[nItemToRemove];
                 int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
 
