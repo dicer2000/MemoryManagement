@@ -48,6 +48,12 @@ What I found that indeed, there were problems with me properly checking bounds. 
 
 Thank goodness for Assert!
 
+## Deadlock 
+
+To implement deadlock, I used the algorithm from class as my starting point.  However, instead of returning a true or false, if a deadlock is found, it returns one of the processes found in the deadlock.  This process is then singaled for termination.  The termination has to be smart, so all processes are released.  It signals to kill the process, the process starts a routine to signal  back to OSS to release the resources, OSS signals back when complete, and the process terminates.
+
+The deadlock's victim process is not guaranteed to the cheapest or even to solve the deadlock immediately.  It simply kills the first process it comes to in a deadlock -- probably the one with the lowest process ID.  It's maybe not the smartest implementation, but it was easier to implement and test, while meeting the objectives of the exercise.
+
 ## Work Log
 
 - 4/5/2021 - Setup initial project files and make file
@@ -60,5 +66,7 @@ Thank goodness for Assert!
 - 4/12/2021 - Continued testing
 - 4/14/2021 - Testing; Keeping track of processes that are closing; Setting up Deadlock testing
 - 4/15/2021 - Fixing errors with Segmentation Faults; Continued timing and testing
+- 4/16/2021 - Got deadlocks working; Testing
+- 4/17/2021 - Added timing; worked on random settings; Testing
 
 *©2021 Brett W. Huffman*

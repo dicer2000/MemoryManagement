@@ -176,9 +176,15 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // - assorted other misc items
     while(!isShutdown)
     {
-        // Every loop gets 100-10000ns for scheduling time
- //       ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
-
+        // Every loop gets 100-10000ns for processing time
+        s.Wait();
+        ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
+        if(ossHeader->simClockNanoseconds > 1000000000)
+        {
+            ossHeader->simClockSeconds += floor(ossHeader->simClockNanoseconds/1000000000);
+            ossHeader->simClockNanoseconds -= 1000000000;
+        }
+        s.Signal();
         // ********************************************
         // Create New Processes
         // ********************************************
@@ -220,6 +226,10 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     // Log Process Status
                     LogItem(bm.getBitView(), strLogFile);
 
+                    // Every new process gets 1-500ms for scheduling time
+                    s.Wait();
+                    ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
+                    s.Signal();
                 }
             }
         }
@@ -470,7 +480,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 cout << "******** DDDDEADLOCK ********: " << nDeadlockProcess << endl;
     //            Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
                 cout << endl;
-    //            Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
     //            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
 
                 // Kill it and update our bitmap
@@ -543,12 +553,12 @@ int forkProcess(string strProcess, string strLogFile, int nArrayItem)
         {
             // Execute child process without array arguements
             if(nArrayItem < 0)
-              execl(strProcess.c_str(), strProcess.c_str(), strLogFile.c_str(), (char*)0);
+              execl(strProcess.c_str(), strProcess.c_str(), strLogFile.c_str(), "25", (char*)0);
             else
             {
               // Convert int to a c_str to send to exec
               string strArrayItem = GetStringFromInt(nArrayItem);
-              execl(strProcess.c_str(), strProcess.c_str(), strArrayItem.c_str(), strLogFile.c_str(), (char*)0);
+              execl(strProcess.c_str(), strProcess.c_str(), strArrayItem.c_str(), strLogFile.c_str(), "25", (char*)0);
             }
 
             fflush(stdout); // Mostly for debugging -> tty wasn't flushing

@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
     // of the incoming arguments.
 
     // Check incoming arguements
-    if(argc < 2)
+    if(argc < 3)
     {
         cout << "Args: " << argv[0] << endl;
         perror("user_proc: Incorrect argument found");
@@ -48,6 +48,9 @@ int main(int argc, char* argv[])
 
     // And the log file string
     string strLogFile = argv[2];
+
+    // Get the incoming Queue ID of the process
+    const int nMaxProcessScheduleTime = atoi(argv[3]);
 
     // The list of resources the process owns
     vector<int> vecOwnedResourceList;
@@ -127,10 +130,15 @@ int main(int argc, char* argv[])
     while(true)
     {
         // Set probabilities for this round
-        bool willRequestResource = getRandomProbability(0.015f);
-        bool willCloseResource = getRandomProbability(0.15f);
+        bool willRequestResource = getRandomProbability((float)(nMaxProcessScheduleTime/100.0f));
+        bool willCloseResource = getRandomProbability((float)(nMaxProcessScheduleTime/100.0f));
         bool willShutdown = getRandomProbability(0.50f);
         
+        // Every round gets 1-500ms for processing time
+        s.Wait();
+        ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
+        s.Signal();
+
         // Shut down => signal to OSS to release resources and remove (Only after at least 1 second)
         if(sigQuitFlag || (time(NULL) - secondsStart > 1 && willShutdown))
         {

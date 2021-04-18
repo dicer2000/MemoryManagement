@@ -111,11 +111,17 @@ const key_t KEY_MUTEX = 0x54321;
 
 void Print1DArray(const int* nArray, const int nArraySize, const int nCols)
 {
-    // Print the entire array in 2D
+    std::cout << "   ";
+    // Print the header
+    for(int i = 0; i < nCols; i++)
+        std::cout << "R" << i << " ";
+    std::cout << std::endl;
+    // Print the entire array in 2D - Do a little funny math to line everything up
     for(int i = 0; i < nArraySize/nCols; i++)
     {
+        std::cout << "P" << i << ((i>9) ? " " : "  ");
         for(int j = 0; j < nCols; j++)
-            std::cout << nArray[i * nCols + j] << " ";
+            std::cout << nArray[i * nCols + j] << ((j>9) ? "   " : "  ");
         std::cout << std::endl;
     }
 }
