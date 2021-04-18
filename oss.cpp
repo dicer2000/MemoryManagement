@@ -56,6 +56,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Get the time in seconds for our process to make
     // sure we don't exceed the max amount of processing time
     time_t secondsStart = time(NULL);   // Start time
+    int deadlockTimer = 1;
     struct tm * curtime = localtime( &secondsStart );   // Will use for filename uniqueness
     strLogFile.append("_").append(asctime(curtime));
     replace(strLogFile.begin(), strLogFile.end(), ' ', '_');
@@ -162,6 +163,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // For debugging
 //    Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
 //    isShutdown=true;
+
+    try {   // Error trap
 
     // Start of main loop that will do the following
     // - Handle oss shutdown
@@ -311,10 +314,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
         if(!isKilled)
         {
             // First fullfil any waiting requests in request queue
-/*
-            s.Wait();
-            s.Signal();
-*/
             // Receive a message if any available
             if(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
             {
@@ -337,18 +336,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
                                 ossResourceDescriptors[i].countReleased++;
                             }
                         }
-                        /*
-                        // Find any wait queue items for this item and clear them out
-                        for(vector<int>::iterator resItem = 
-                            ossResourceDescriptors[i].waitingQueue.begin(); 
-                            resItem != ossResourceDescriptors[i].waitingQueue.end(); ++resItem)
-                        {
-                            if(*resItem == msg.procIndex)
-                            {
-                                ossResourceDescriptors[i].waitingQueue.erase(resItem);
-                            }
-                        }
-                        */
                     }
                     // Send back the message to continue shutdown
                     msg.action = OK;
@@ -452,7 +439,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 {
                 // Update our Matrices - Allocated & Request
 
-                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
+//                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
                 int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
                 Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
                 nNewVal = Get1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX);
@@ -470,56 +457,31 @@ int ossProcess(string strLogFile, bool VerboseMode)
         // Check for Deadlocks
         // ********************************************
         // Using the deadlock detection algorithms to find the deadlock
-        int nDeadlockProcess = deadlock(ossHeader->availabilityMatrix, 
-        PROCESSES_MAX, RESOURCES_MAX, ossHeader->requestMatrix, ossHeader->allocatedMatrix);
-
-        // Deadlock found, release a resource from this process
-        if(nDeadlockProcess > -1)
+        // Only once per second
+        if((time(NULL)-secondsStart) > deadlockTimer)
         {
-            cout << "******** DDDDEADLOCK ********: " << nDeadlockProcess << endl;
-            Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
-            cout << endl;
-            Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
-//            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
-//sleep(3);
-//isShutdown=true;
-/*
-            for(vector<int>::iterator resItem = 
-                ossResourceDescriptors[i].allocatedProcs.begin(); 
-                resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
+            deadlockTimer++;
+            int nDeadlockProcess = deadlock(ossHeader->availabilityMatrix, 
+            PROCESSES_MAX, RESOURCES_MAX, ossHeader->requestMatrix, ossHeader->allocatedMatrix);
+
+            // Deadlock found, release a resource from this process
+            if(nDeadlockProcess > -1)
             {
-                if(*resItem == msg.procPid)
-                {
-                    
+                cout << "******** DDDDEADLOCK ********: " << nDeadlockProcess << endl;
+    //            Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
+                cout << endl;
+    //            Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+    //            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
 
-                }
+                // Kill it and update our bitmap
+                kill(ossUserProcesses[nDeadlockProcess].pid, SIGQUIT);
+                bm.setBitmapBits(nDeadlockProcess, false);
             }
-*/
         }
-        // For each process class, check for deadlocks, if one
-        // found find a victim and kill it
-        /*
-        for(int i=0; i < DESCRIPTOR_COUNT; i++)
-        {
-
-            if(deadlock(&ossResourceDescriptors[i].allocatedProcs[0],
-                countTotalResources,
-                ossResourceDescriptors[i].allocatedProcs.size(),
-                ))
-            {
-                // Deadlock found, remove an item.  We'll keep doing
-                // this until no deadlocks are detected
-                int resToRemove = 
-                    ossResourceDescriptors[i].allocatedProcs.back();
-
-                    ossResourceDescriptors[i].allocatedProcs.pop_back();
-                    ossResourceDescriptors[i].countReleased++;
-              
-            }
-
-        }
-        */
     } // End of main loop
+    } catch( ... ) {
+        cout << "An error occured.  Shutting down shared resources" << endl;
+    }
 
     // Get the stats from the shared memory before we break it down
     nTotalTime = ossHeader->simClockSeconds;
