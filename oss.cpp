@@ -78,17 +78,14 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
     // Statistics
     int nProcessCount = 0;   // 100 MAX
-    int nCPUProcessCount = 0;
-    int nIOProcessCount = 0;
-    uint nCPUTimeInSystem = 0;
-    uint nIOTimeInSystem = 0;
-    uint nCPU_CPUUtil = 0;
-    uint nIO_CPUUtil = 0;
-    uint nCPU_TimeWaitedBlocked = 0;
-    uint nIO_TimeWaitedBlocked = 0;
-    uint nTotalTime = 0;
-    uint nCPU_IdleTime = 0;
-    uint nTotalWaitTime = 0;
+    int nTotalTime = 0;
+    int countRequested = 0;
+    int countAllocated = 0;
+    int countReleased = 0;
+    int countWaited = 0;
+    int countDeadlocked = 0;
+    int countDeadlockRuns = 0;
+    int countDieNaturally = 0;
 
     // Create a Semaphore to coordinate control
     productSemaphores s(KEY_MUTEX, true, 1);
@@ -252,6 +249,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     // Kill it and update our bitmap
                     kill(ossUserProcesses[nIndex].pid, SIGQUIT);
                     bm.setBitmapBits(nIndex, false);
+
+                    countDieNaturally++;
                 }
             }
 
@@ -306,7 +305,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
-
                     break;
                 }
             }
@@ -343,7 +341,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                             if(*resItem == msg.procPid)
                             {
                                 ossResourceDescriptors[i].allocatedProcs.erase(resItem);
-                                ossResourceDescriptors[i].countReleased++;
+                                countReleased++;
                             }
                         }
                     }
@@ -355,14 +353,14 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 else if(msg.action==REQUEST_CREATE)
                 {
             cout << "OSS ####### In Resource Create " << msg.procPid << " : " << msg.resIndex << endl;
-                    ossResourceDescriptors[msg.resIndex].countRequested++;
+                    countRequested++;
 
                     // Check if this resource is available, if so allocate
                     if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
                     {
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procPid);
-                        ossResourceDescriptors[msg.resIndex].countAllocated++;    
+                        countAllocated++;    
                     
                         // Update our matrix
                         int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
@@ -377,7 +375,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     else //  put in wait queue
                     {
                         ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procPid);
-                        ossResourceDescriptors[msg.resIndex].countWaited++;
+                        countWaited++;
                         // Update the requestMatrix
                         int nNewVal = Get1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
                         Set1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
@@ -394,7 +392,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         if(*resItem == msg.procPid)
                         {
                             ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
-                            ossResourceDescriptors[msg.resIndex].countReleased++;
+                            countReleased++;
 
 //                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
 
@@ -435,7 +433,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
             cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
-                ossResourceDescriptors[i].countAllocated++;
+                countAllocated++;
 
                 // Find the Proc Index from the PID
                 int nIndex = -1;
@@ -471,6 +469,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
         if((time(NULL)-secondsStart) > deadlockTimer)
         {
             deadlockTimer++;
+            countDeadlockRuns++;
+
             int nDeadlockProcess = deadlock(ossHeader->availabilityMatrix, 
             PROCESSES_MAX, RESOURCES_MAX, ossHeader->requestMatrix, ossHeader->allocatedMatrix);
 
@@ -484,6 +484,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
     //            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
 
                 // Kill it and update our bitmap
+                countDeadlocked++;
                 kill(ossUserProcesses[nDeadlockProcess].pid, SIGQUIT);
                 bm.setBitmapBits(nDeadlockProcess, false);
             }
@@ -517,20 +518,21 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
     LogItem("OSS: Message Queue De-allocated", strLogFile);
 
-    if(nCPUProcessCount > 0 && nIOProcessCount > 0)
+    // Calc & Report the statistics
+    LogItem("________________________________\n", strLogFile);
+    LogItem("OSS Statistics", strLogFile);
+    LogItem("Total Requests Granted:\t\t\t" + GetStringFromInt(countAllocated), strLogFile);
+    LogItem("Requests Granted After Wait:\t\t" + GetStringFromInt(countWaited), strLogFile);
+    LogItem("Processes Killed By Deadlock:\t\t" + GetStringFromInt(countDeadlocked), strLogFile);
+    LogItem("Processes Die Naturally:\t\t" + GetStringFromInt(countDieNaturally), strLogFile);
+    LogItem("Times Deadlock Ran:\t\t\t" + GetStringFromInt(countDeadlockRuns), strLogFile);
+    if(countAllocated > 0)
     {
-        // Calc & Report the statistics
-        LogItem("________________________________\n", strLogFile);
-        LogItem("OSS Statistics", strLogFile);
-        LogItem("\t\t\tI/O\t\tCPU", strLogFile);
-//        LogItem("Total\t\t\t" + GetStringFromInt(nIOProcessCount) + "\t\t" + GetStringFromInt(nCPUProcessCount), strLogFile);
-//        string strIOStat = GetStringFromFloat((float)nTotalTime/(float)nIOProcessCount);
-//        string strCPUStat = GetStringFromFloat((float)nTotalTime/(float)nCPUProcessCount);
-//        LogItem("Avg Sys Time\t\t" + strIOStat + "\t\t" + strCPUStat, strLogFile);
-//        LogItem("Avg Wait Time:\t" + strIOStat + "ns", strLogFile);
-//        strCPUStat = GetStringFromFloat((float)nCPU_IdleTime);
-//        LogItem("CPU Idle Time:\t" + strCPUStat + "\n", strLogFile);
+        string strDeadlockPercent = GetStringFromFloat((float)countDeadlocked/(float)countAllocated*100.0f);
+        LogItem("Avg Percent Deadlock:\t\t\t" + strDeadlockPercent, strLogFile);
     }
+    cout << endl;
+
     // Success!
     return EXIT_SUCCESS;
 }
@@ -553,12 +555,12 @@ int forkProcess(string strProcess, string strLogFile, int nArrayItem)
         {
             // Execute child process without array arguements
             if(nArrayItem < 0)
-              execl(strProcess.c_str(), strProcess.c_str(), strLogFile.c_str(), "25", (char*)0);
+              execl(strProcess.c_str(), strProcess.c_str(), strLogFile.c_str(), "50", (char*)0);
             else
             {
               // Convert int to a c_str to send to exec
               string strArrayItem = GetStringFromInt(nArrayItem);
-              execl(strProcess.c_str(), strProcess.c_str(), strArrayItem.c_str(), strLogFile.c_str(), "25", (char*)0);
+              execl(strProcess.c_str(), strProcess.c_str(), strArrayItem.c_str(), strLogFile.c_str(), "50", (char*)0);
             }
 
             fflush(stdout); // Mostly for debugging -> tty wasn't flushing

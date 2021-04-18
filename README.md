@@ -13,6 +13,8 @@ There were some items I didn't understand about the project's operation.  Based 
 
 1. All times are processed and shown in Seconds:Nanoseconds
 2. Added -v as a verbose mode per pg 2 of instructions
+3. The Deadlock algorithm was calculated per the "Deadlock" section below
+4. The range for the process scheduler (from pg 2 of instructions) is a parameter to the user_proc app as instructed.  I have set the upper limit B to 25% of the time.
 
 ## Program Switches
 The program can be invoked as:

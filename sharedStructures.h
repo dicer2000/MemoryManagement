@@ -70,10 +70,6 @@ struct ResourceDescriptors {
     std::vector<int> allocatedProcs;
     std::vector<int> waitingQueue;
     int  countTotalResources;
-    int  countRequested;
-    int  countAllocated;
-    int  countReleased;
-    int  countWaited;
 };
 
 struct UserProcesses {
