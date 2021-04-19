@@ -38,6 +38,7 @@ int main(int argc, char* argv[])
     // Check incoming arguements
     if(argc < 3)
     {
+        show_usage("user_Proc.cpp");
         cout << "Args: " << argv[0] << endl;
         perror("user_proc: Incorrect argument found");
         exit(EXIT_FAILURE);
@@ -122,9 +123,11 @@ int main(int argc, char* argv[])
     struct ResourceDescriptors* ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(struct UserProcesses)*PROCESSES_MAX));
 
     // Log a new process started
+    s.Wait();
     LogItem("PROC ", ossHeader->simClockSeconds,
         ossHeader->simClockNanoseconds, "Started Successfully", 
         nPid, nItemToProcess, strLogFile);
+    s.Signal();
 
     // Loop forever, the first if statement will handle controlled shutdown
     while(true)
@@ -143,12 +146,13 @@ int main(int argc, char* argv[])
         if(sigQuitFlag || (time(NULL) - secondsStart > 1 && willShutdown))
         {
 
-//            cout << "PR &&& In Destroy: " << " : " << nItemToProcess << endl;
 
+            s.Wait();
             LogItem("PROC ", ossHeader->simClockSeconds,
                 ossHeader->simClockNanoseconds,
                 "Shutting down process", 
                 nPid, nItemToProcess, strLogFile);
+            s.Signal();
 
             // Send the message Synchronously - we want it to shutdown
             // all the resources, then exit cleanly
@@ -170,7 +174,11 @@ int main(int argc, char* argv[])
             // Get the resource being requested
             int nResource = getRandomValue(0, RESOURCES_MAX-1);
 
-            cout << "PR &&& In Request: " << nPid << " : " << nResource << endl;
+            s.Wait();
+            LogItem("PROC ", ossHeader->simClockSeconds,
+                ossHeader->simClockNanoseconds, "Requesting Resource: " + GetStringFromInt(nResource), 
+                nPid, nItemToProcess, strLogFile);
+            s.Signal();
 
             // Request a new resource
             msg.type = OSS_MQ_TYPE;
@@ -196,7 +204,11 @@ int main(int argc, char* argv[])
             {
                 int nItemToRemove = getRandomValue(0, vecOwnedResourceList.size()-1);
 
-                cout << "PR &&& In Destroy: " << nPid << " : " << nItemToRemove << endl;
+                s.Wait();
+                LogItem("PROC ", ossHeader->simClockSeconds,
+                    ossHeader->simClockNanoseconds, "Releasing Resource: " + nItemToRemove, 
+                    nPid, nItemToProcess, strLogFile);
+                s.Signal();
 
                 msg.type = OSS_MQ_TYPE;
                 msg.action = REQUEST_DESTROY;
@@ -229,10 +241,8 @@ static void show_usage(std::string name)
               << name << " - user_proc app by Brett Huffman for CMP SCI 4760" << std::endl
               << std::endl
               << "Usage:\t" << name << " [-h]" << std::endl
-              << "\t" << name << " [-s t] [-l f]" << std::endl
+              << "\t" << name << " QueueID LogFileName MaxProcessScheduleTime " << std::endl
               << "Options:" << std::endl
               << "  -h   Describe how the project should be run, then terminate" << std::endl
-              << "  -s t Indicate how many maximum seconds before the system terminates" << std::endl
-              << "  -l f Specify a particular name for the log file (Default logfile)" << std::endl
               << std::endl << std::endl;
 }

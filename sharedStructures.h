@@ -105,6 +105,17 @@ const key_t KEY_MUTEX = 0x54321;
  * Helper Functions
  * *************************************************/
 
+// Returns a string from an int
+std::string GetStringFromInt(const int nVal)
+{
+    int length = snprintf( NULL, 0, "%d", nVal);
+    char* sDep = (char*)malloc( length + 1 );
+    snprintf( sDep, length + 1, "%d", nVal);
+    std::string strFinalVal = sDep;                    
+    free(sDep);
+    return strFinalVal;
+}
+
 void Print1DArray(const int* nArray, const int nArraySize, const int nCols)
 {
     std::cout << "   ";
@@ -121,6 +132,25 @@ void Print1DArray(const int* nArray, const int nArraySize, const int nCols)
         std::cout << std::endl;
     }
 }
+
+std::string Make1DArrayString(const int* nArray, const int nArraySize, const int nCols)
+{
+    std::string strOutput = "   ";
+    // Print the header
+    for(int i = 0; i < nCols; i++)
+        strOutput.append("R" + GetStringFromInt(i) + " ");
+    strOutput.append("\n");
+    // Print the entire array in 2D - Do a little funny math to line everything up
+    for(int i = 0; i < nArraySize/nCols; i++)
+    {
+        strOutput.append("P" + GetStringFromInt(i) + ((i>9) ? " " : "  "));
+        for(int j = 0; j < nCols; j++)
+            strOutput.append(GetStringFromInt(nArray[i * nCols + j]) + ((j>9) ? "   " : "  "));
+        strOutput.append("\n");
+    }
+    return strOutput;
+}
+
 // Gets the value of an int in a 1D array based on columns and rows
 int Get1DArrayValue(const int* nArray, const int nRow, const int nCol, const int nTotalCols)
 {
@@ -154,17 +184,6 @@ std::string GetTimeFormatted(const char* prePendString)
     std::string strReturn = prePendString;
     strReturn.append(buffer);
     return strReturn;
-}
-
-// Returns a string from an int
-std::string GetStringFromInt(const int nVal)
-{
-    int length = snprintf( NULL, 0, "%d", nVal);
-    char* sDep = (char*)malloc( length + 1 );
-    snprintf( sDep, length + 1, "%d", nVal);
-    std::string strFinalVal = sDep;                    
-    free(sDep);
-    return strFinalVal;
 }
 
 // Returns a string from an float to 4 decimal places

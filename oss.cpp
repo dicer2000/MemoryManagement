@@ -66,7 +66,11 @@ int ossProcess(string strLogFile, bool VerboseMode)
     LogItem("------------------------------------------------\n", strLogFile);
     LogItem("OSS by Brett Huffman - CMP SCI 4760 - Project 5\n", strLogFile);
     LogItem("------------------------------------------------\n", strLogFile);
-
+    if(VerboseMode)
+        LogItem("Verbose Mode: ON", strLogFile);
+    else
+        LogItem("Verbose Mode: OFF", strLogFile);
+   
 
     // Bitmap object for keeping track of children
     bitmapper bm(PROCESSES_MAX);
@@ -212,9 +216,9 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                     // Increment out next target to make a new process
                     nNextTargetStartTime+=getRandomValue(1, 500);
-                    cout << "Next Target Time: " << nNextTargetStartTime << endl;
 
                     // Log it
+                    s.Wait();
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Generating new process", 
                         newPID,
@@ -222,9 +226,8 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                     // Log Process Status
                     LogItem(bm.getBitView(), strLogFile);
-
+                    
                     // Every new process gets 1-500ms for scheduling time
-                    s.Wait();
                     ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
                     s.Signal();
                 }
@@ -289,7 +292,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
         // A PID Exited
         if (WIFEXITED(wstatus) && waitPID > 0)
         {
-//            cout << "O: ********************* Exited: " << waitPID << endl;
 
             // Find the PID and remove it from the bitmap
             for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
@@ -301,10 +303,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     ossUserProcesses[nIndex].pid = 0;
                     bm.setBitmapBits(nIndex, false);
 
+                    s.Wait();
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
+                    s.Signal();
                     break;
                 }
             }
@@ -325,14 +329,18 @@ int ossProcess(string strLogFile, bool VerboseMode)
             // Receive a message if any available
             if(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
             {
-                cout << "OSS ####### Got Message: " << msg.action << " : " << msg.procPid << " : " << msg.resIndex << endl;
+                s.Wait();
+                LogItem("OSS  ", ossHeader->simClockSeconds,
+                    ossHeader->simClockNanoseconds, "OSS Received Message from Process " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                    msg.procPid, msg.procIndex, strLogFile);
+                s.Signal();
 
                 if(msg.action==REQUEST_SHUTDOWN)
                 {
                     // Go through each resource
                     for(int i=0; i < RESOURCES_MAX; i++)
                     {
-            cout << "OSS ####### In Shutdown " << i << endl;
+
                         // Find any resources held by this message and clear them out
                         for(vector<int>::iterator resItem = 
                             ossResourceDescriptors[i].allocatedProcs.begin(); 
@@ -345,6 +353,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
                             }
                         }
                     }
+                    s.Wait();
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "OSS Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                        msg.procPid, msg.procIndex, strLogFile);
+                    s.Signal();
+
                     // Send back the message to continue shutdown
                     msg.action = OK;
                     msg.type = msg.procPid;
@@ -352,7 +366,6 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 }
                 else if(msg.action==REQUEST_CREATE)
                 {
-            cout << "OSS ####### In Resource Create " << msg.procPid << " : " << msg.resIndex << endl;
                     countRequested++;
 
                     // Check if this resource is available, if so allocate
@@ -365,7 +378,17 @@ int ossProcess(string strLogFile, bool VerboseMode)
                         // Update our matrix
                         int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
                         Set1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
-//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+
+                        s.Wait();
+                        LogItem("OSS  ", ossHeader->simClockSeconds,
+                            ossHeader->simClockNanoseconds, "OSS Process Create Resource Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action) + " - Created", 
+                            msg.procPid, msg.procIndex, strLogFile);
+
+                        // Print the Allocated Matrix every 20 requests
+                        if(VerboseMode && countAllocated%20==0)
+                            LogItem(Make1DArrayString(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX), strLogFile);
+
+                        s.Signal();
 
                         // Send success message back
                         msg.action = OK;
@@ -374,17 +397,34 @@ int ossProcess(string strLogFile, bool VerboseMode)
                     }
                     else //  put in wait queue
                     {
+                        if(VerboseMode)
+                        {
+                            s.Wait();
+                            LogItem("OSS  ", ossHeader->simClockSeconds,
+                                ossHeader->simClockNanoseconds, 
+                                "OSS Resource Request Not Granted: " + GetStringFromInt(msg.procIndex) + " Process Going To Sleep", 
+                                msg.procPid, msg.resIndex, strLogFile);
+                            s.Signal();
+                        }
+
                         ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procPid);
                         countWaited++;
                         // Update the requestMatrix
                         int nNewVal = Get1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
                         Set1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
-            cout << "OSS ####### WAIT for Resource " << msg.procPid << " : " << msg.resIndex << " - " << ossResourceDescriptors[msg.resIndex].waitingQueue.size() << endl;
                     }
                 }
                 else if(msg.action==REQUEST_DESTROY)
                 {
-                    cout << "OSS ####### In Resource Destroy " << msg.procPid << " : " << msg.resIndex << endl;
+                    if(VerboseMode)
+                    {
+                        s.Wait();
+                        LogItem("OSS  ", ossHeader->simClockSeconds,
+                            ossHeader->simClockNanoseconds, "OSS Process Resource Release Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                            msg.procPid, msg.procIndex, strLogFile);
+                        s.Signal();
+                    }
+
                     for(vector<int>::iterator resItem = 
                         ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
                         resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
@@ -423,15 +463,12 @@ int ossProcess(string strLogFile, bool VerboseMode)
                 ossResourceDescriptors[i].allocatedProcs.size() &&
                 ossResourceDescriptors[i].waitingQueue.size() > 0)
             {
-//cout << "Got here 4 : " << ossResourceDescriptors[i].waitingQueue.size() << endl;
                 // Just take the top one off and insert it (for now)
                 int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
-//cout << "Got here 4.1" << endl;
 
                 assert(!ossResourceDescriptors[i].waitingQueue.empty());
                 ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
 
-            cout << "OSS ####### In Wait Resource Alloc " << nWaitingProc << " : " << i << endl;
                 ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
                 countAllocated++;
 
@@ -445,13 +482,20 @@ int ossProcess(string strLogFile, bool VerboseMode)
 
                 if(nIndex > -1)
                 {
-                // Update our Matrices - Allocated & Request
-
-//                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
-                int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
-                Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
-                nNewVal = Get1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX);
-                Set1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX, nNewVal-1);
+                    if(VerboseMode)
+                    {
+                        s.Wait();
+                        LogItem("OSS  ", ossHeader->simClockSeconds,
+                            ossHeader->simClockNanoseconds, "OSS Resource Allocated From Wait " + GetStringFromInt(nWaitingProc), 
+                            nWaitingProc, nWaitingProc, strLogFile);
+                        s.Signal();
+                    }
+                    // Update our Matrices - Allocated & Request
+    //                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
+                    int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
+                    Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
+                    nNewVal = Get1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX);
+                    Set1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX, nNewVal-1);
                 }
 
                 // Send success message back
@@ -477,11 +521,11 @@ int ossProcess(string strLogFile, bool VerboseMode)
             // Deadlock found, release a resource from this process
             if(nDeadlockProcess > -1)
             {
-                cout << "******** DDDDEADLOCK ********: " << nDeadlockProcess << endl;
-    //            Print1DArray(ossHeader->availabilityMatrix, RESOURCES_MAX, RESOURCES_MAX);
-                cout << endl;
-                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
-    //            Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
+                s.Wait();
+                LogItem("OSS  ", ossHeader->simClockSeconds,
+                    ossHeader->simClockNanoseconds, "Deadlock Detected " + GetStringFromInt(nDeadlockProcess) + " - killing process", 
+                    msg.procPid, msg.procIndex, strLogFile);
+                s.Signal();
 
                 // Kill it and update our bitmap
                 countDeadlocked++;
@@ -500,6 +544,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
     // Breakdown shared memory
     // Dedetach shared memory segment from process's address space
 
+    s.Wait();
     LogItem("________________________________\n", strLogFile);
     LogItem("OSS: De-allocating shared memory", strLogFile);
 
@@ -531,6 +576,7 @@ int ossProcess(string strLogFile, bool VerboseMode)
         string strDeadlockPercent = GetStringFromFloat((float)countDeadlocked/(float)countAllocated*100.0f);
         LogItem("Avg Percent Deadlock:\t\t\t" + strDeadlockPercent, strLogFile);
     }
+    s.Signal();
     cout << endl;
 
     // Success!
