@@ -69,6 +69,9 @@ The deadlock's victim process is not guaranteed to the cheapest or even to solve
 - 4/14/2021 - Testing; Keeping track of processes that are closing; Setting up Deadlock testing
 - 4/15/2021 - Fixing errors with Segmentation Faults; Continued timing and testing
 - 4/16/2021 - Got deadlocks working; Testing
-- 4/17/2021 - Added timing; worked on random settings; Testing
+- 4/17/2021 - Added timing; worked on random settings; Testing;
+- 4/18/2021 - Debugging Deadlock code
+- 4/19/2021 - Testing; Setting up statistics; RC1
+
 
 *©2021 Brett W. Huffman*

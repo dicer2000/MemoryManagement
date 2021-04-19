@@ -197,7 +197,6 @@ int main(int argc, char* argv[])
             continue;
         }
 
-
         if(vecOwnedResourceList.size() > 0 && willCloseResource)
         {
             if(vecOwnedResourceList.size() > 0)
@@ -206,7 +205,7 @@ int main(int argc, char* argv[])
 
                 s.Wait();
                 LogItem("PROC ", ossHeader->simClockSeconds,
-                    ossHeader->simClockNanoseconds, "Releasing Resource: " + nItemToRemove, 
+                    ossHeader->simClockNanoseconds, "Releasing Resource: " + GetStringFromInt(nItemToRemove), 
                     nPid, nItemToProcess, strLogFile);
                 s.Signal();
 
