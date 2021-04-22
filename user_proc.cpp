@@ -1,11 +1,11 @@
 /********************************************
- * user_proc - Resource Management (oss) Application
+ * user_proc - Memory Management (oss) Application
  * This is the child process called by the oos
  * application.
  * 
  * Brett Huffman
- * CMP SCI 4760 - Project 5
- * Due Apr 20, 2021
+ * CMP SCI 4760 - Project 6
+ * Due May 4, 2021
  * user_proc CPP file for oss project
  ********************************************/
 

@@ -6,8 +6,8 @@
  * containing data, and shared messages.
  * 
  * Brett Huffman
- * CMP SCI 4760 - Project 5
- * Due Apr 20, 2021
+ * CMP SCI 4760 - Project 6
+ * Due May 4, 2021
  * sharedStructures.h file for project
  ********************************************/
 #ifndef SHAREDSTRUCTURES_H
@@ -39,12 +39,11 @@
 //***************************************************
 // Important Program Constants
 //***************************************************
+// Max Processes
+#define PROCESSES_MAX 20
 
 // The size of our product queue
 const int maxTimeToRunInSeconds = 3;
-
-const int PROCESSES_MAX = 40;
-const int RESOURCES_MAX = 18;
 const char* ChildProcess = "./user_proc";
 
 //***************************************************

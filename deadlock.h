@@ -4,8 +4,7 @@
  * deadlock lectures.
  * 
  * Brett Huffman
- * CMP SCI 4760 - Project 5
- * Due Apr 20, 2021
+ * CMP SCI 4760
  * deadlock.h file for project
  ********************************************/
 #ifndef DEADLOCK_H

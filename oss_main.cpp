@@ -1,5 +1,5 @@
 /********************************************
- * oss_main - Process Scheduling (oss) Application
+ * oss_main - Memory Management (oss) Application
  * This file is for the main function of the
  * application.  It simply makes sure the
  * program arguements are correct, then
@@ -7,8 +7,8 @@
  * processing.
  * 
  * Brett Huffman
- * CMP SCI 4760 - Project 4
- * Due Mar 29, 2021
+ * CMP SCI 4760 - Project 6
+ * Due May 4, 2021
  * Main CPP file for oss project
  ********************************************/
 #include <iostream>
@@ -37,20 +37,17 @@ int main(int argc, char* argv[])
     // Argument processing
     int opt;
     string strLogFile = "logfile";
-    bool VerboseMode = false;
+    int nProcessesRequested = PROCESSES_MAX;
 
     // Go through each parameter entered and
     // prepare for processing
-    while ((opt = getopt(argc, argv, "hv")) != -1) {
+    while ((opt = getopt(argc, argv, "hp")) != -1) {
         switch (opt) {
             case 'h':
                 show_usage(argv[0]);
                 return EXIT_SUCCESS;
-            case 'l':
-                strLogFile = optarg;
-                break;
-            case 'v':
-                VerboseMode = true;
+            case 'p':
+                nProcessesRequested = atoi(optarg);
                 break;
             case '?': // Unknown arguement                
                 if (isprint (optopt))
@@ -72,7 +69,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    return ossProcess(strLogFile, VerboseMode);
+    return ossProcess(strLogFile, nProcessesRequested);
 }
 
 
@@ -83,9 +80,9 @@ static void show_usage(std::string name)
               << name << " - oss app by Brett Huffman for CMP SCI 4760" << std::endl
               << std::endl
               << "Usage:\t" << name << " [-h]" << std::endl
-              << "\t" << name << " [-v]" << std::endl
+              << "\t" << name << " [-p]" << std::endl
               << "Options:" << std::endl
               << "  -h   Describe how the project should be run, then terminate" << std::endl
-              << "  -v   Runs OSS in Verbose mode, yielding detailed run data" << std::endl
+              << "  -p   indicates the number of user processes in the system - default 20." << std::endl
               << std::endl << std::endl;
 }
