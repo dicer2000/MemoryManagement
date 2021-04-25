@@ -16,11 +16,10 @@
 #include <list>
 #include <algorithm>
 #include <unistd.h>
-#include "sharedStructures.h"
 #include "productSemaphores.h"
 #include "oss.h"
 #include "bitmapper.h"
-#include "deadlock.h"
+#include "sharedStructures.h"
 
 using namespace std;
 
@@ -30,8 +29,6 @@ void sigintHandler(int sig){ // can be called asynchronously
   sigIntFlag = 1; // set flag
 }
 
-const int MAX_PROCESSES = 100;
-
 // ossProcess - Process to start oss process.
 int ossProcess(string strLogFile, int nProcessesRequested)
 {
@@ -40,8 +37,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     // Important items
     struct OssHeader* ossHeader;
-    struct UserProcesses* ossUserProcesses;
-    struct ResourceDescriptors* ossResourceDescriptors;
+
     int wstatus;
     long nNextTargetStartTime = 0;   // Next process' target start time
 
@@ -59,7 +55,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     // Get the time in seconds for our process to make
     // sure we don't exceed the max amount of processing time
     time_t secondsStart = time(NULL);   // Start time
-    int deadlockTimer = 1;
     struct tm * curtime = localtime( &secondsStart );   // Will use for filename uniqueness
     strLogFile.append("_").append(asctime(curtime));
     replace(strLogFile.begin(), strLogFile.end(), ' ', '_');
@@ -67,12 +62,8 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     // Print out the header
     LogItem("------------------------------------------------\n", strLogFile);
-    LogItem("OSS by Brett Huffman - CMP SCI 4760 - Project 5\n", strLogFile);
+    LogItem("OSS by Brett Huffman - CMP SCI 4760 - Project 6\n", strLogFile);
     LogItem("------------------------------------------------\n", strLogFile);
-    if(VerboseMode)
-        LogItem("Verbose Mode: ON", strLogFile);
-    else
-        LogItem("Verbose Mode: OFF", strLogFile);
    
 
     // Bitmap object for keeping track of children
@@ -90,8 +81,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     int countAllocated = 0;
     int countReleased = 0;
     int countWaited = 0;
-    int countDeadlocked = 0;
-    int countDeadlockRuns = 0;
     int countDieNaturally = 0;
 
     // Create a Semaphore to coordinate control
@@ -113,9 +102,8 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     // Setup shared memory
     // allocate a shared memory segment with size of 
     // Product Header + entire Product array
-    int memSize = sizeof(struct OssHeader) + 
-        (sizeof(struct UserProcesses) * PROCESSES_MAX) +
-        (sizeof(struct ResourceDescriptors) * RESOURCES_MAX);
+    int memSize = sizeof(struct OssHeader);
+
     shm_id = shmget(KEY_SHMEM, memSize, IPC_CREAT | IPC_EXCL | 0660);
     if (shm_id == -1) {
         perror("OSS: Error allocating shared memory");
@@ -131,36 +119,24 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     // Get the queue header
     ossHeader = (struct OssHeader*) (shm_addr);
-    // Get our entire queue
-    ossUserProcesses = (struct UserProcesses*) (shm_addr+sizeof(struct OssHeader));
-    // Get our entire queue
-    ossResourceDescriptors = (struct ResourceDescriptors*) (ossUserProcesses+(sizeof(struct UserProcesses)*PROCESSES_MAX));
-
-    // Index to Item Currently Processing - Start at nothing processing
-    int nIndexToCurrentChildProcessing = -1;
 
     // Fill the product header
     ossHeader->simClockSeconds = 0;
     ossHeader->simClockNanoseconds = 0;
 
-    // Zero-out all the arrays
-    memset(ossHeader->availabilityMatrix, 0, sizeof(ossHeader->availabilityMatrix));
-    memset(ossHeader->requestMatrix, 0, sizeof(ossHeader->requestMatrix));
-    memset(ossHeader->allocatedMatrix, 0, sizeof(ossHeader->allocatedMatrix));
-
+    // Setup all the arrays
     // Setup all Descriptors per instructions
-    for(int i=0; i < RESOURCES_MAX && !isShutdown; i++)
+    for(int i=0; i < PROCESSES_MAX && !isShutdown; i++)
     {
-        // First decide if > 1 item is allowed (20% of the time)
-        if(getRandomProbability(0.20f))
+        ossHeader->pcb[i].pid = -1;
+        ossHeader->pcb[i].currentFrame = 0;
+        for(int j=0; j < maxPages; j++)
         {
-            // Set both the availability Matrix and the Vector version
-            ossHeader->availabilityMatrix[i] = ossResourceDescriptors[i].countTotalResources = getRandomValue(2, 10);
-        }
-        else
-        {
-            // Set both the allocation Matrix and the Vector version
-            ossHeader->availabilityMatrix[i] = ossResourceDescriptors[i].countTotalResources = 1;
+            ossHeader->pcb[i].ptable[j].frame = -1;
+            ossHeader->pcb[i].ptable[j].reference = 0;
+            ossHeader->pcb[i].ptable[j].protection = rand() % 2;
+            ossHeader->pcb[i].ptable[j].dirty = 0;
+            ossHeader->pcb[i].ptable[j].valid = 0;
         }
     }
 
@@ -174,13 +150,11 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     // - Handle oss shutdown
     // - Create new processes in between 500-1000 msec intervals
     // - Handle child shutdowns
-    // - Process requests for resources and distributing
-    // - Handle deadlocks by selecting a victim and killing
-    // - Gather statistics of each process
-    // - assorted other misc items
+
     while(!isShutdown)
     {
         // Every loop gets 100-10000ns for processing time
+/*
         s.Wait();
         ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
         if(ossHeader->simClockNanoseconds > 1000000000)
@@ -189,12 +163,13 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             ossHeader->simClockNanoseconds -= 1000000000;
         }
         s.Signal();
+*/
+
         // ********************************************
         // Create New Processes
         // ********************************************
         // Check bitmap for room to make new processes
-        if(nProcessCount < MAX_PROCESSES && !isKilled &&
-            time(NULL) - secondsStart < 3)
+        if(nProcessCount < PROCESSES_MAX && !isKilled)
         {
             // Check if there is room for new processes
             // in the bitmap structure
@@ -203,22 +178,17 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             {
                 if(!bm.getBitmapBits(nIndex))
                 {
-                    cout << endl << "####### New Process #######" << endl;
-
                     // Found one.  Create new process
                     int newPID = forkProcess(ChildProcess, strLogFile, nIndex);
 
                     // Setup Shared Memory for processing
-                    ossUserProcesses[nIndex].pid = newPID;
+                    ossHeader->pcb[nIndex].pid = newPID;
 
                     // Set bit in bitmap
                     bm.setBitmapBits(nIndex, true);
 
                     // Increment how many have been made
                     nProcessCount++;
-
-                    // Increment out next target to make a new process
-                    nNextTargetStartTime+=getRandomValue(1, 500);
 
                     // Log it
                     s.Wait();
@@ -233,6 +203,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     // Every new process gets 1-500ms for scheduling time
                     ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
                     s.Signal();
+
                 }
             }
         }
@@ -243,9 +214,10 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // Terminate the process if CTRL-C is typed
         // or if the max time-to-process has been exceeded
         // but only send out messages to kill once
-        if((sigIntFlag || (time(NULL)-secondsStart) > maxTimeToRunInSeconds) && !isKilled)
+        if(sigIntFlag)
         {
             isKilled = true;
+            /*
             // Send signal for every child process to terminate
             for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
@@ -259,7 +231,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     countDieNaturally++;
                 }
             }
-
+            */
             // We have notified children to terminate immediately
             // then let program shutdown naturally -- that way
             // shared resources are deallocated correctly
@@ -299,19 +271,20 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             // Find the PID and remove it from the bitmap
             for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
-                if(ossUserProcesses[nIndex].pid == waitPID)
+                if(ossHeader->pcb[nIndex].pid == waitPID)
                 {
 
                     // Reset to start over
-                    ossUserProcesses[nIndex].pid = 0;
+                    ossHeader->pcb[nIndex].pid = 0;
                     bm.setBitmapBits(nIndex, false);
-
+/*
                     s.Wait();
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
                     s.Signal();
+*/
                     break;
                 }
             }
@@ -328,214 +301,8 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // ********************************************
         if(!isKilled)
         {
-            // First fullfil any waiting requests in request queue
-            // Receive a message if any available
-            if(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
-            {
-                s.Wait();
-                LogItem("OSS  ", ossHeader->simClockSeconds,
-                    ossHeader->simClockNanoseconds, "OSS Received Message from Process " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
-                    msg.procPid, msg.procIndex, strLogFile);
-                s.Signal();
-
-                if(msg.action==REQUEST_SHUTDOWN)
-                {
-                    // Go through each resource
-                    for(int i=0; i < RESOURCES_MAX; i++)
-                    {
-
-                        // Find any resources held by this message and clear them out
-                        for(vector<int>::iterator resItem = 
-                            ossResourceDescriptors[i].allocatedProcs.begin(); 
-                            resItem != ossResourceDescriptors[i].allocatedProcs.end(); ++resItem)
-                        {
-                            if(*resItem == msg.procPid)
-                            {
-                                ossResourceDescriptors[i].allocatedProcs.erase(resItem);
-                                countReleased++;
-                            }
-                        }
-                    }
-                    s.Wait();
-                    LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "OSS Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
-                        msg.procPid, msg.procIndex, strLogFile);
-                    s.Signal();
-
-                    // Send back the message to continue shutdown
-                    msg.action = OK;
-                    msg.type = msg.procPid;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
-                }
-                else if(msg.action==REQUEST_CREATE)
-                {
-                    countRequested++;
-
-                    // Check if this resource is available, if so allocate
-                    if(ossResourceDescriptors[msg.resIndex].countTotalResources > 
-                        ossResourceDescriptors[msg.resIndex].allocatedProcs.size())
-                    {
-                        ossResourceDescriptors[msg.resIndex].allocatedProcs.push_back(msg.procPid);
-                        countAllocated++;    
-                    
-                        // Update our matrix
-                        int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
-                        Set1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
-
-                        s.Wait();
-                        LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "OSS Process Create Resource Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action) + " - Created", 
-                            msg.procPid, msg.procIndex, strLogFile);
-
-                        // Print the Allocated Matrix every 20 requests
-                        if(VerboseMode && countAllocated%20==0)
-                            LogItem(Make1DArrayString(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX), strLogFile);
-
-                        s.Signal();
-
-                        // Send success message back
-                        msg.action = OK;
-                        msg.type = msg.procPid;
-                        int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
-                    }
-                    else //  put in wait queue
-                    {
-                        if(VerboseMode)
-                        {
-                            s.Wait();
-                            LogItem("OSS  ", ossHeader->simClockSeconds,
-                                ossHeader->simClockNanoseconds, 
-                                "OSS Resource Request Not Granted: " + GetStringFromInt(msg.procIndex) + " Process Going To Sleep", 
-                                msg.procPid, msg.resIndex, strLogFile);
-                            s.Signal();
-                        }
-
-                        ossResourceDescriptors[msg.resIndex].waitingQueue.push_back(msg.procPid);
-                        countWaited++;
-                        // Update the requestMatrix
-                        int nNewVal = Get1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
-                        Set1DArrayValue(ossHeader->requestMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, nNewVal+1);
-                    }
-                }
-                else if(msg.action==REQUEST_DESTROY)
-                {
-                    if(VerboseMode)
-                    {
-                        s.Wait();
-                        LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "OSS Process Resource Release Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
-                            msg.procPid, msg.procIndex, strLogFile);
-                        s.Signal();
-                    }
-
-                    for(vector<int>::iterator resItem = 
-                        ossResourceDescriptors[msg.resIndex].allocatedProcs.begin(); 
-                        resItem != ossResourceDescriptors[msg.resIndex].allocatedProcs.end(); ++resItem)
-                    {
-                        if(*resItem == msg.procPid)
-                        {
-                            ossResourceDescriptors[msg.resIndex].allocatedProcs.erase(resItem);
-                            countReleased++;
-
-//                Print1DArray(ossHeader->allocatedMatrix, RESOURCES_MAX*PROCESSES_MAX, RESOURCES_MAX);
-
-                            // Decrement the matrix
-                            int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX);
-                            Set1DArrayValue(ossHeader->allocatedMatrix, msg.procIndex, msg.resIndex, RESOURCES_MAX, max(nNewVal-1, 0));
-
-                            break;
-                        }
-                    }
-                    // Send success message back
-                    msg.action = OK;
-                    msg.type = msg.procPid;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
-                }
-            }
-        }
-        
-        // ********************************************
-        // Move Waiting Resource Requests into Freed Areas if avail
-        // ********************************************
-
-        // Loop through each resource to see if there is any room
-        // available and that there is a waiting resource
-        for(int i=0; i < RESOURCES_MAX; i++)
-        {
-            if(ossResourceDescriptors[i].countTotalResources >
-                ossResourceDescriptors[i].allocatedProcs.size() &&
-                ossResourceDescriptors[i].waitingQueue.size() > 0)
-            {
-                // Just take the top one off and insert it (for now)
-                int nWaitingProc = ossResourceDescriptors[i].waitingQueue.front();
-
-                assert(!ossResourceDescriptors[i].waitingQueue.empty());
-                ossResourceDescriptors[i].waitingQueue.erase(ossResourceDescriptors[i].waitingQueue.begin());
-
-                ossResourceDescriptors[i].allocatedProcs.push_back(nWaitingProc);
-                countAllocated++;
-
-                // Find the Proc Index from the PID
-                int nIndex = -1;
-                for(int j=0; j < PROCESSES_MAX; j++)
-                {
-                    if(ossUserProcesses[j].pid == nWaitingProc)
-                        nIndex = j;
-                }
-
-                if(nIndex > -1)
-                {
-                    if(VerboseMode)
-                    {
-                        s.Wait();
-                        LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "OSS Resource Allocated From Wait " + GetStringFromInt(nWaitingProc), 
-                            nWaitingProc, nWaitingProc, strLogFile);
-                        s.Signal();
-                    }
-                    // Update our Matrices - Allocated & Request
-    //                Print1DArray(ossHeader->requestMatrix, RESOURCES_MAX*PROCESSES_MAX,RESOURCES_MAX);
-                    int nNewVal = Get1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX);
-                    Set1DArrayValue(ossHeader->allocatedMatrix, nIndex, i, RESOURCES_MAX, nNewVal+1);
-                    nNewVal = Get1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX);
-                    Set1DArrayValue(ossHeader->requestMatrix, nIndex, i, RESOURCES_MAX, nNewVal-1);
-                }
-
-                // Send success message back
-                msg.action = OK;
-                msg.type = nWaitingProc;
-                int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
-            }
         }
 
-        // ********************************************
-        // Check for Deadlocks
-        // ********************************************
-        // Using the deadlock detection algorithms to find the deadlock
-        // Only once per second
-        if((time(NULL)-secondsStart) > deadlockTimer)
-        {
-            deadlockTimer++;
-            countDeadlockRuns++;
-
-            int nDeadlockProcess = deadlock(ossHeader->availabilityMatrix, 
-            PROCESSES_MAX, RESOURCES_MAX, ossHeader->requestMatrix, ossHeader->allocatedMatrix);
-
-            // Deadlock found, release a resource from this process
-            if(nDeadlockProcess > -1)
-            {
-                s.Wait();
-                LogItem("OSS  ", ossHeader->simClockSeconds,
-                    ossHeader->simClockNanoseconds, "Deadlock Detected " + GetStringFromInt(nDeadlockProcess) + " - killing process", 
-                    msg.procPid, msg.procIndex, strLogFile);
-                s.Signal();
-
-                // Kill it and update our bitmap
-                countDeadlocked++;
-                kill(ossUserProcesses[nDeadlockProcess].pid, SIGQUIT);
-                bm.setBitmapBits(nDeadlockProcess, false);
-            }
-        }
     } // End of main loop
     } catch( ... ) {
         cout << "An error occured.  Shutting down shared resources" << endl;
@@ -566,6 +333,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     LogItem("OSS: Message Queue De-allocated", strLogFile);
 
+/*
     // Calc & Report the statistics
     LogItem("________________________________\n", strLogFile);
     LogItem("OSS Statistics", strLogFile);
@@ -581,7 +349,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     }
     s.Signal();
     cout << endl;
-
+*/
     // Success!
     return EXIT_SUCCESS;
 }

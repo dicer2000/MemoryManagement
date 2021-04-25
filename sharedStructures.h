@@ -41,6 +41,13 @@
 //***************************************************
 // Max Processes
 #define PROCESSES_MAX 20
+const int totalProcesses = 40;
+const int pageCount = 32;
+const int pageSize = 1000;
+const int frameSize = pageSize;
+const int processSize = pageCount * 1000;
+const int maxPages = processSize / pageSize;
+const float readwriteProbability = 0.65f; // % Chance of a read operation
 
 // The size of our product queue
 const int maxTimeToRunInSeconds = 3;
@@ -49,30 +56,32 @@ const char* ChildProcess = "./user_proc";
 //***************************************************
 // Enums
 //***************************************************
-
-enum RequestType { REQUEST_CREATE, REQUEST_DESTROY, REQUEST_SHUTDOWN, OK };
-
+enum MemRefType { READ, WRITE };
+enum ProcessActions { FRAME_READ, FRAME_WRITE, PROCESS_SHUTDOWN };
 //***************************************************
 // Structures
 //***************************************************
+typedef unsigned int uint;
+
+// Credit to Jared Diehl for his breakdown of these items
+struct PageTable {
+    uint frame;         // frame index
+    uint reference;     // second chance page replacement reference bit
+    uint protection;    // indicates if page is read=0 or write=1 (may not be needed)
+    uint dirty;         // indicates if page has been modified
+    uint valid;         // indicates if this PTE is loaded with a page
+};
+
+struct PCB {
+	pid_t pid;
+	int currentFrame;
+	PageTable ptable[maxPages];
+};
 
 struct OssHeader {
     int simClockSeconds;     // System Clock - Seconds
     int simClockNanoseconds; // System Clock - Nanoseconds
-    
-    int allocatedMatrix[PROCESSES_MAX * RESOURCES_MAX];
-    int availabilityMatrix[RESOURCES_MAX];
-    int requestMatrix[PROCESSES_MAX * RESOURCES_MAX];
-};
-
-struct ResourceDescriptors {
-    std::vector<int> allocatedProcs;
-    std::vector<int> waitingQueue;
-    int  countTotalResources;
-};
-
-struct UserProcesses {
-    int pid;
+	PCB pcb[PROCESSES_MAX];
 };
 
 const key_t KEY_SHMEM = 0x54320;  // Shared key
@@ -90,7 +99,7 @@ struct message {
     int  action;
     int  procPid;
     int  procIndex;
-    int  resIndex;
+    uint  memoryAddress;
 } msg;
 
 const long OSS_MQ_TYPE = 1000;

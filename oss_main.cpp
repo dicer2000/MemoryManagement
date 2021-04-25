@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
     // Argument processing
     int opt;
     string strLogFile = "logfile";
-    int nProcessesRequested = PROCESSES_MAX;
+    int nProcessesRequested = 20;
 
     // Go through each parameter entered and
     // prepare for processing

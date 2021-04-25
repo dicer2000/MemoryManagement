@@ -46,7 +46,7 @@ The biggest problems experienced in this project
 ## Work Log
 
 - 4/21/2021 - Setup initial project files and make file
-- 4/22/2021 - 
-
+- 4/22/2021 - Creating child and PCB
+- 4/23/2021 - Created PageTable and initialized; Research
 
 *©2021 Brett W. Huffman*

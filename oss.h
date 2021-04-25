@@ -17,7 +17,7 @@
 using namespace std;
 
 // ossProcess - Process to start oss process.
-int ossProcess(std::string, bool);
+int ossProcess(std::string, int);
 
 int forkProcess(string, string, int);
 
