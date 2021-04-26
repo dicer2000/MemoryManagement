@@ -81,7 +81,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     int countAllocated = 0;
     int countReleased = 0;
     int countWaited = 0;
-    int countDieNaturally = 0;
 
     // Create a Semaphore to coordinate control
     productSemaphores s(KEY_MUTEX, true, 1);
@@ -150,11 +149,11 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     // - Handle oss shutdown
     // - Create new processes in between 500-1000 msec intervals
     // - Handle child shutdowns
+    // - Handle memory requests
 
     while(!isShutdown)
     {
         // Every loop gets 100-10000ns for processing time
-/*
         s.Wait();
         ossHeader->simClockNanoseconds += getRandomValue(10, 10000);
         if(ossHeader->simClockNanoseconds > 1000000000)
@@ -163,7 +162,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             ossHeader->simClockNanoseconds -= 1000000000;
         }
         s.Signal();
-*/
 
         // ********************************************
         // Create New Processes
@@ -181,17 +179,15 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     // Found one.  Create new process
                     int newPID = forkProcess(ChildProcess, strLogFile, nIndex);
 
-                    // Setup Shared Memory for processing
-                    ossHeader->pcb[nIndex].pid = newPID;
-
                     // Set bit in bitmap
                     bm.setBitmapBits(nIndex, true);
 
-                    // Increment how many have been made
-                    nProcessCount++;
-
-                    // Log it
+                    // Protected setup and Log it
                     s.Wait();
+
+                    // Setup Shared Memory for processing
+                    ossHeader->pcb[nIndex].pid = newPID;
+
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Generating new process", 
                         newPID,
@@ -204,6 +200,8 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
                     s.Signal();
 
+                    // Increment how many have been made
+                    nProcessCount++;
                 }
             }
         }
@@ -214,24 +212,24 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // Terminate the process if CTRL-C is typed
         // or if the max time-to-process has been exceeded
         // but only send out messages to kill once
-        if(sigIntFlag)
+        if(sigIntFlag || time(NULL) - secondsStart > 10)
         {
             isKilled = true;
-            /*
+
             // Send signal for every child process to terminate
             for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
                 // Send signal to close if they are in-process
+                s.Wait();
                 if(bm.getBitmapBits(nIndex))
                 {
                     // Kill it and update our bitmap
-                    kill(ossUserProcesses[nIndex].pid, SIGQUIT);
+                    kill(ossHeader->pcb[nIndex].pid, SIGQUIT);
                     bm.setBitmapBits(nIndex, false);
-
-                    countDieNaturally++;
                 }
+                s.Signal();
             }
-            */
+            
             // We have notified children to terminate immediately
             // then let program shutdown naturally -- that way
             // shared resources are deallocated correctly
@@ -239,11 +237,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             {
                 errno = EINTR;
                 perror("Killing processes due to ctrl-c signal");
-            }
-            else
-            {
-                errno = ETIMEDOUT;
-                perror("Killing processes due to timeout");
             }
         }
 
@@ -269,6 +262,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         {
 
             // Find the PID and remove it from the bitmap
+            s.Wait();
             for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
             {
                 if(ossHeader->pcb[nIndex].pid == waitPID)
@@ -277,17 +271,17 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     // Reset to start over
                     ossHeader->pcb[nIndex].pid = 0;
                     bm.setBitmapBits(nIndex, false);
-/*
-                    s.Wait();
+                    bm.debugPrintBits();
+
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
-                    s.Signal();
-*/
+
                     break;
                 }
             }
+            s.Signal();
 
         } else if (WIFSIGNALED(wstatus) && waitPID > 0) {
             cout << waitPID << " killed by signal " << WTERMSIG(wstatus) << endl;
@@ -297,10 +291,55 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         }
 
         // ********************************************
-        // Manage Resource Requests
+        // Manage Child Requests
         // ********************************************
-        if(!isKilled)
+        while(!isKilled && (msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0))
         {
+                int nProcessID = msg.procPid;
+                /*
+                s.Wait();
+                LogItem("OSS  ", ossHeader->simClockSeconds,
+                    ossHeader->simClockNanoseconds, "Received Message from Process " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                    msg.procPid, msg.procIndex, strLogFile);
+                s.Signal();
+                */
+                if(msg.action==PROCESS_SHUTDOWN)
+                {
+                    // Go through each process
+                    for(int i=0; i < PROCESSES_MAX; i++)
+                    {
+
+                        // Find any frames held by this process and clear out
+
+                    }
+                    s.Wait();
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                        msg.procPid, msg.procIndex, strLogFile);
+                    s.Signal();
+
+                    // Send back the message to continue shutdown
+                    msg.action = OK;
+                    msg.type = nProcessID;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                }
+                else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
+                {
+                    s.Wait();
+                    // Add approx 14 ms for each read/write
+                    ossHeader->simClockNanoseconds += 14000000;
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Received Frame Request " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                        msg.procPid, msg.procIndex, strLogFile);
+                    s.Signal();
+
+                    // Memory aquired, continue
+                    msg.action = OK;
+                    msg.type = nProcessID;
+                    msg.memoryAddress = 101;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                }
+
         }
 
     } // End of main loop
@@ -308,13 +347,13 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         cout << "An error occured.  Shutting down shared resources" << endl;
     }
 
-    // Get the stats from the shared memory before we break it down
-    nTotalTime = ossHeader->simClockSeconds;
-
     // Breakdown shared memory
     // Dedetach shared memory segment from process's address space
 
     s.Wait();
+    // Get the stats from the shared memory before we break it down
+    nTotalTime = ossHeader->simClockSeconds;
+
     LogItem("________________________________\n", strLogFile);
     LogItem("OSS: De-allocating shared memory", strLogFile);
 

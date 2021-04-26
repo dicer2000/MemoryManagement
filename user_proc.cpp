@@ -52,8 +52,6 @@ int main(int argc, char* argv[])
     // Get the incoming Queue ID of the process
     const int nMaxProcessScheduleTime = atoi(argv[3]);
 
-    cout << "&&& New: " << nItemToProcess << " : " << strLogFile << endl;
-
     // Register SIGQUIT handling
     signal(SIGINT, sigQuitHandler);
 
@@ -128,8 +126,11 @@ int main(int argc, char* argv[])
         // Set probabilities for this round
         bool willShutdown = getRandomProbability(0.001f);
         bool willRead = getRandomProbability(readwriteProbability);
-        bool willReadOutsideLegalPageTable = getRandomProbability(0.05f);
+        bool willReadOutsideLegalPageTable = getRandomProbability(0.001f);
         
+
+//        cout << "=> " << (rand()%1000)/10.0f << " : " << .001 * 100.0f << endl;
+
         // Every round gets 1-500ms for processing time
         s.Wait();
         ossHeader->simClockNanoseconds += getRandomValue(1000, 500000);
@@ -143,7 +144,7 @@ int main(int argc, char* argv[])
             s.Wait();
             LogItem("PROC ", ossHeader->simClockSeconds,
                 ossHeader->simClockNanoseconds,
-                "Shutting down process", 
+                "Process Shutting Down", 
                 nPid, nItemToProcess, strLogFile);
             s.Signal();
 
@@ -156,7 +157,7 @@ int main(int argc, char* argv[])
             int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
 
             // Once I get the reply back, we can continue to shutdown
-//            msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
+            msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0); 
 
             return EXIT_SUCCESS;
         }
@@ -171,9 +172,9 @@ int main(int argc, char* argv[])
         msg.action = (willRead) ? FRAME_READ : FRAME_WRITE;
         msg.procIndex = nItemToProcess;
         msg.procPid = nPid;
-        msg.memoryAddress = rand() % 32768;
+        msg.memoryAddress = 41; //rand() % 32768;
         // Send a memory request
-        int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
+        int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0);// IPC_NOWAIT);
         // Once we get the reply back, we can continue
         msgrcv(msgid, (void *) &msg, sizeof(message), nPid, 0);
         // Check if OSS is telling it to shutdown
@@ -186,13 +187,13 @@ int main(int argc, char* argv[])
                 nPid, nItemToProcess, strLogFile);
             s.Signal();
 
-            return EXIT_SUCCESS;
+            return EXIT_FAILURE;
         }
 
         s.Wait();
         LogItem("PROC ", ossHeader->simClockSeconds,
             ossHeader->simClockNanoseconds,
-            "Memory received: " + GetStringFromInt(msg.memoryAddress), 
+            "Frame granted: " + GetStringFromInt(msg.memoryAddress), 
             nPid, nItemToProcess, strLogFile);
         s.Signal();
 

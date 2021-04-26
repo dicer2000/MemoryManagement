@@ -57,7 +57,7 @@ const char* ChildProcess = "./user_proc";
 // Enums
 //***************************************************
 enum MemRefType { READ, WRITE };
-enum ProcessActions { FRAME_READ, FRAME_WRITE, PROCESS_SHUTDOWN };
+enum ProcessActions { FRAME_READ, FRAME_WRITE, PROCESS_SHUTDOWN, OK };
 //***************************************************
 // Structures
 //***************************************************
@@ -79,8 +79,8 @@ struct PCB {
 };
 
 struct OssHeader {
-    int simClockSeconds;     // System Clock - Seconds
-    int simClockNanoseconds; // System Clock - Nanoseconds
+    uint simClockSeconds;     // System Clock - Seconds
+    uint simClockNanoseconds; // System Clock - Nanoseconds
 	PCB pcb[PROCESSES_MAX];
 };
 
@@ -266,7 +266,9 @@ int getRandomValue(int MinVal, int MaxVal)
 // Be sure to run srand first!
 bool getRandomProbability(float ProbabilityOfTrue)
 {
-  return rand()%100 < (ProbabilityOfTrue * 100);
+    float fVal = (rand()%1000)/10.0f;
+//    std::cout << ProbabilityOfTrue * 100.0f << "/" << fVal << std::endl;
+    return fVal < (ProbabilityOfTrue * 100.0f);
 }
 
 // Formats a string with variable number of params
