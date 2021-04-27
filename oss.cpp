@@ -68,6 +68,11 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     // Bitmap object for keeping track of children
     bitmapper bm(PROCESSES_MAX);
+    bitmapper memory(totalMemory);
+
+    string test = memory.showAsTable(32);
+    cout << test << endl << endl;
+    return EXIT_SUCCESS;
 
     // Register SIGINT handling
     signal(SIGINT, sigintHandler);

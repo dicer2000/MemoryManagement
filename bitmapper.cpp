@@ -12,6 +12,7 @@
 #include "bitmapper.h"
 #include <string.h>
 #include <fstream>
+#include <stdlib.h>
 
 using namespace std;
 
@@ -118,5 +119,43 @@ std::string bitmapper::getBitView()
     for (int i = 0; i < _size*8; i++)
         strRet.append(getBitmapBits(i) ? "*" : " ");
     strRet.append("\n");
+    return strRet;
+}
+
+std::string bitmapper::showAsTable(int BitWidth)
+{
+    if(BitWidth < 1 || _size < 1)
+        return "";
+    char buffer[3];
+    std::string strRet =  "\t";
+    int majorMarks = 10;
+    int rows = _size*8 / BitWidth;
+    for(int i = 0; i < BitWidth; i++)
+    {
+        if(i%10==0)
+            sprintf(buffer, "%d", i/10);
+        else
+            sprintf(buffer, "%s", " ");
+        strRet.append(buffer);
+    }
+    strRet.append("\n\t");
+
+    for(int i = 0; i < BitWidth; i++)
+    {
+        sprintf(buffer, "%d", i%10);
+        strRet.append(buffer);
+    }
+    for(int i = 0; i < _size*8; i++)
+    {
+        if(i%BitWidth==0)
+        {
+            strRet.append("\n");
+            sprintf(buffer, "%d", i/BitWidth);
+            strRet.append(buffer);
+            strRet.append("\t");
+        }
+        strRet.append(getBitmapBits(i) ? "1" : "0");
+    }
+
     return strRet;
 }

@@ -40,13 +40,16 @@ To run the program, use the oss command.  You can use any of the command line op
 
 ## Problems / Issues
 
-The biggest problems experienced in this project 
-
+The biggest problems experienced in this project was in just understanding what this project was trying to do.  It took me reading and re-reading the instructions many times.  Finally, it became clear, but it was a push.
 
 ## Work Log
 
 - 4/21/2021 - Setup initial project files and make file
 - 4/22/2021 - Creating child and PCB
 - 4/23/2021 - Created PageTable and initialized; Research
+- 4/24/2021 - Testing; Adding multi-process support
+- 4/25/2021 - Investigating freezes; Testing; Fix
+- 4/26/2021 - Modified Bitmapper class to show memory in table format
+
 
 *©2021 Brett W. Huffman*

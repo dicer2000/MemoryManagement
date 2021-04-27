@@ -10,6 +10,13 @@
 #ifndef BITMAPPER
 #define BITMAPPER
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
+#define BIT_SET(a, b) ((a) |= (1ULL << (b)))
+#define BIT_CLEAR(a, b) ((a) &= ~(1ULL << (b)))
+#define BIT_FLIP(a, b) ((a) ^= (1ULL << (b)))
+#define BIT_CHECK(a, b) (!!((a) & (1ULL << (b))))
 
 class bitmapper
 {
@@ -30,6 +37,7 @@ class bitmapper
     void toggleBits(int);
     void debugPrintBits();
     std::string getBitView();
+    std::string showAsTable(int);
 };
 
 

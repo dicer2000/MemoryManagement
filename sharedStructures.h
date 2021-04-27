@@ -41,6 +41,7 @@
 //***************************************************
 // Max Processes
 #define PROCESSES_MAX 20
+const int totalMemory = 256;
 const int totalProcesses = 40;
 const int pageCount = 32;
 const int pageSize = 1000;
