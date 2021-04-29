@@ -42,7 +42,6 @@
 // Max Processes
 #define PROCESSES_MAX 20
 const int totalMemory = 256;
-const int totalProcesses = 40;
 const int pageCount = 32;
 const int pageSize = 1000;
 const int frameSize = pageSize;
@@ -76,7 +75,7 @@ struct PageTable {
 struct PCB {
 	pid_t pid;
 	int currentFrame;
-	PageTable ptable[maxPages];
+	PageTable ptable[maxPages]; // 32 indexes at 1k Each
 };
 
 struct OssHeader {

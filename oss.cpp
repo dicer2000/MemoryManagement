@@ -42,8 +42,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     long nNextTargetStartTime = 0;   // Next process' target start time
 
     // Queues for managing processes
-    queue<int> readyQueue;
-    list<int> blockedList;
+    queue<int> IOQueue;
 
     // Pid used throughout child
     const pid_t nPid = getpid();
@@ -70,10 +69,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     bitmapper bm(PROCESSES_MAX);
     bitmapper memory(totalMemory);
 
-    string test = memory.showAsTable(32);
-    cout << test << endl << endl;
-    return EXIT_SUCCESS;
-
     // Register SIGINT handling
     signal(SIGINT, sigintHandler);
     bool isKilled = false;
@@ -86,6 +81,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     int countAllocated = 0;
     int countReleased = 0;
     int countWaited = 0;
+    int nLastIOProcessTime = 0;
 
     // Create a Semaphore to coordinate control
     productSemaphores s(KEY_MUTEX, true, 1);
@@ -300,35 +296,52 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // ********************************************
         while(!isKilled && (msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0))
         {
-                int nProcessID = msg.procPid;
-                /*
+            int nProcessID = msg.procPid;
+            /*
+            s.Wait();
+            LogItem("OSS  ", ossHeader->simClockSeconds,
+                ossHeader->simClockNanoseconds, "Received Message from Process " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                msg.procPid, msg.procIndex, strLogFile);
+            s.Signal();
+            */
+            if(msg.action==PROCESS_SHUTDOWN)
+            {
+                // Go through each process
+                for(int i=0; i < PROCESSES_MAX; i++)
+                {
+
+                    // Find any frames held by this process and clear out
+
+                }
                 s.Wait();
                 LogItem("OSS  ", ossHeader->simClockSeconds,
-                    ossHeader->simClockNanoseconds, "Received Message from Process " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                    ossHeader->simClockNanoseconds, "Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
                     msg.procPid, msg.procIndex, strLogFile);
                 s.Signal();
-                */
-                if(msg.action==PROCESS_SHUTDOWN)
+
+                // Send back the message to continue shutdown
+                msg.action = OK;
+                msg.type = nProcessID;
+                int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+            }
+            else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
+            {
+                // First, check if the frame is already in our page table
+                bool bFound = false;
+                for(int i = 0; i < maxPages; i++)
                 {
-                    // Go through each process
-                    for(int i=0; i < PROCESSES_MAX; i++)
+                    // If we've found this memory in the ptable and it's valid...
+                    if(ossHeader->pcb->ptable[i].frame==msg.memoryAddress && ossHeader->pcb->ptable[i].valid)
                     {
-
-                        // Find any frames held by this process and clear out
-
+                        // If it's not dirty or dirty, but only reading
+                        if(!ossHeader->pcb->ptable[i].dirty || (ossHeader->pcb->ptable[i].dirty && msg.action==FRAME_READ))
+                            bFound = true;
+                        continue;
                     }
-                    s.Wait();
-                    LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
-                        msg.procPid, msg.procIndex, strLogFile);
-                    s.Signal();
-
-                    // Send back the message to continue shutdown
-                    msg.action = OK;
-                    msg.type = nProcessID;
-                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
                 }
-                else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
+
+                // Found the frame, grant it to the requesting client
+                if(bFound)
                 {
                     s.Wait();
                     // Add approx 14 ms for each read/write
@@ -344,9 +357,40 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     msg.memoryAddress = 101;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
                 }
-
+                else
+                {   // Not found or dirty. Queue for disk retrieval
+                    IOQueue.push(nProcessID);
+                }
+            }
         }
 
+        // ********************************************
+        // I/O Responses
+        // ********************************************
+        // If we've had 14ms since last response, process next queue item
+        if(ossHeader->simClockNanoseconds-nLastIOProcessTime > 14000000)
+        {
+            if(!IOQueue.empty())
+            {
+                int nProcessID = IOQueue.front();
+                // Find the next free frame if available
+                int nMemoryAddress = -1;
+                for(int i=0; i < maxPages; i++)
+                {
+                    
+                }
+
+
+
+
+                IOQueue.pop();
+                // Send memory response to waiting process
+                msg.action = OK;
+                msg.type = nProcessID;
+                msg.memoryAddress = nProcessID;
+                int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+            }
+        }
     } // End of main loop
     } catch( ... ) {
         cout << "An error occured.  Shutting down shared resources" << endl;
