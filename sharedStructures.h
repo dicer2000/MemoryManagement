@@ -43,10 +43,9 @@
 #define PROCESSES_MAX 20
 const int totalMemory = 256;
 const int pageCount = 32;
-const int pageSize = 1000;
+const int pageSize = 1024;
 const int frameSize = pageSize;
-const int processSize = pageCount * 1000;
-const int maxPages = processSize / pageSize;
+const int processSize = pageCount * pageSize;
 const float readwriteProbability = 0.65f; // % Chance of a read operation
 
 // The size of our product queue
@@ -75,13 +74,18 @@ struct PageTable {
 struct PCB {
 	pid_t pid;
 	int currentFrame;
-	PageTable ptable[maxPages]; // 32 indexes at 1k Each
+	PageTable ptable[pageCount]; // 32 indexes at 1k Each
 };
 
 struct OssHeader {
     uint simClockSeconds;     // System Clock - Seconds
     uint simClockNanoseconds; // System Clock - Nanoseconds
 	PCB pcb[PROCESSES_MAX];
+};
+
+struct MemQueueItems {
+    int pcb;
+    int address;
 };
 
 const key_t KEY_SHMEM = 0x54320;  // Shared key

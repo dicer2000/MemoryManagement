@@ -42,7 +42,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     long nNextTargetStartTime = 0;   // Next process' target start time
 
     // Queues for managing processes
-    queue<int> IOQueue;
+    queue<MemQueueItems> IOQueue;
 
     // Pid used throughout child
     const pid_t nPid = getpid();
@@ -76,6 +76,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     // Statistics
     int nProcessCount = 0;   // 100 MAX
+    int nTotalProcessCount = 0;
     int nTotalTime = 0;
     int countRequested = 0;
     int countAllocated = 0;
@@ -130,7 +131,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     {
         ossHeader->pcb[i].pid = -1;
         ossHeader->pcb[i].currentFrame = 0;
-        for(int j=0; j < maxPages; j++)
+        for(int j=0; j < pageCount; j++)
         {
             ossHeader->pcb[i].ptable[j].frame = -1;
             ossHeader->pcb[i].ptable[j].reference = 0;
@@ -195,6 +196,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                         nIndex, strLogFile);
 
                     // Log Process Status
+                    LogItem("Startup Process PCB Index " + GetStringFromInt(nIndex), strLogFile);
                     LogItem(bm.getBitView(), strLogFile);
                     
                     // Every new process gets 1-500ms for scheduling time
@@ -203,6 +205,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
                     // Increment how many have been made
                     nProcessCount++;
+                    nTotalProcessCount++;
                 }
             }
         }
@@ -213,7 +216,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // Terminate the process if CTRL-C is typed
         // or if the max time-to-process has been exceeded
         // but only send out messages to kill once
-        if(sigIntFlag || time(NULL) - secondsStart > 10)
+        if(sigIntFlag || time(NULL) - secondsStart > 10 || nTotalProcessCount > 40)
         {
             isKilled = true;
 
@@ -268,16 +271,30 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             {
                 if(ossHeader->pcb[nIndex].pid == waitPID)
                 {
+                    // Clear out the PCB and all Frames for this
+                    // shutting down process
+                    ossHeader->pcb[nIndex].pid = -1;
+                    ossHeader->pcb[nIndex].currentFrame = 0;
+                    for(int j=0; j < pageCount; j++)
+                    {
+                        ossHeader->pcb[nIndex].ptable[j].frame = -1;
+                        ossHeader->pcb[nIndex].ptable[j].reference = 0;
+                        ossHeader->pcb[nIndex].ptable[j].protection = rand() % 2;
+                        ossHeader->pcb[nIndex].ptable[j].dirty = 0;
+                        ossHeader->pcb[nIndex].ptable[j].valid = 0;
+                    }
 
                     // Reset to start over
                     ossHeader->pcb[nIndex].pid = 0;
                     bm.setBitmapBits(nIndex, false);
-                    bm.debugPrintBits();
+                    nProcessCount--;
 
                     LogItem("OSS  ", ossHeader->simClockSeconds,
                         ossHeader->simClockNanoseconds, "Process signaled shutdown", 
                         waitPID,
                         nIndex, strLogFile);
+                    LogItem("Shutdown Process PCB Index " + GetStringFromInt(nIndex), strLogFile);
+                    LogItem(bm.getBitView(), strLogFile);
 
                     break;
                 }
@@ -306,13 +323,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             */
             if(msg.action==PROCESS_SHUTDOWN)
             {
-                // Go through each process
-                for(int i=0; i < PROCESSES_MAX; i++)
-                {
-
-                    // Find any frames held by this process and clear out
-
-                }
                 s.Wait();
                 LogItem("OSS  ", ossHeader->simClockSeconds,
                     ossHeader->simClockNanoseconds, "Process Shutdown Message " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
@@ -327,21 +337,19 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
             {
                 // First, check if the frame is already in our page table
-                bool bFound = false;
-                for(int i = 0; i < maxPages; i++)
+                int foundFrame = -1;
+                for(int i = 0; i < pageCount; i++)
                 {
                     // If we've found this memory in the ptable and it's valid...
                     if(ossHeader->pcb->ptable[i].frame==msg.memoryAddress && ossHeader->pcb->ptable[i].valid)
                     {
-                        // If it's not dirty or dirty, but only reading
-                        if(!ossHeader->pcb->ptable[i].dirty || (ossHeader->pcb->ptable[i].dirty && msg.action==FRAME_READ))
-                            bFound = true;
-                        continue;
+                        foundFrame = i;
+                        break;
                     }
                 }
 
                 // Found the frame, grant it to the requesting client
-                if(bFound)
+                if(foundFrame > -1)
                 {
                     s.Wait();
                     // Add approx 14 ms for each read/write
@@ -358,9 +366,18 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
                 }
                 else
-                {   // Not found or dirty. Queue for disk retrieval
-                    IOQueue.push(nProcessID);
-                }
+                {   // Not found. Interrupt and Queue for disk retrieval
+                    MemQueueItems mqi;
+                    mqi.pcb = msg.procIndex;
+                    mqi.address = msg.memoryAddress;
+                    IOQueue.push(mqi);
+                    s.Wait();
+                    // Add approx 14 ms for each read/write
+                    ossHeader->simClockNanoseconds += 14000000;
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Received Frame Request " + GetStringFromInt(msg.procIndex) + " Not Found - Queued for Retreival", 
+                        msg.procPid, msg.procIndex, strLogFile);
+                    s.Signal();                }
             }
         }
 
@@ -368,29 +385,51 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // I/O Responses
         // ********************************************
         // If we've had 14ms since last response, process next queue item
+        s.Wait();
         if(ossHeader->simClockNanoseconds-nLastIOProcessTime > 14000000)
         {
             if(!IOQueue.empty())
             {
-                int nProcessID = IOQueue.front();
+                MemQueueItems mqi = IOQueue.front();
                 // Find the next free frame if available
-                int nMemoryAddress = -1;
-                for(int i=0; i < maxPages; i++)
+                int nFreeFrame = -1;
+                for(; nFreeFrame < pageCount; nFreeFrame++)
                 {
-                    
+                    if(ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame == -1)
+                        break;
                 }
 
+                if(nFreeFrame > -1)
+                {
+                    IOQueue.pop();
+                    // Set the Page data
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame = mqi.address;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].reference = 0;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].protection = rand() % 2;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].dirty = 0;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].valid = 1;
 
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Memory Granted: Frame " + GetStringFromInt(nFreeFrame), 
+                        ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
 
-
-                IOQueue.pop();
-                // Send memory response to waiting process
-                msg.action = OK;
-                msg.type = nProcessID;
-                msg.memoryAddress = nProcessID;
-                int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                    // Send memory response to waiting process
+                    msg.action = OK;
+                    msg.type = ossHeader->pcb[mqi.pcb].pid;
+                    msg.memoryAddress = mqi.address;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                }
+                else
+                {
+                    //*************** Error observed finding correct frame for memory
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Error observed finding correct frame for memory", 
+                        ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
+                    isShutdown = true;
+                }
             }
         }
+        s.Signal();
     } // End of main loop
     } catch( ... ) {
         cout << "An error occured.  Shutting down shared resources" << endl;
