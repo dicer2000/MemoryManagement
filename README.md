@@ -52,7 +52,7 @@ It seems there are many ways to interpret this project.  This code is the result
 - 4/23/2021 - Created PageTable and initialized; Research
 - 4/24/2021 - Testing; Adding multi-process support
 - 4/25/2021 - Investigating freezes; Testing; Fix
-- 4/26/2021 - Modified Bitmapper class to show memory in table format
+- 4/26/2021 - Modified Bilstmapper class to show memory in table format
 - 4/27/2021 - Debugging
 - 4/28/2021 - Adding logic for memory interrupts
 - 4/29/2021 - Debugging; Completing memory setup; Handling page faulting; Logging
