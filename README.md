@@ -56,5 +56,7 @@ It seems there are many ways to interpret this project.  This code is the result
 - 4/27/2021 - Debugging
 - 4/28/2021 - Adding logic for memory interrupts
 - 4/29/2021 - Debugging; Completing memory setup; Handling page faulting; Logging
+- 4/30/2021 - Changing how addresses are stored; Debugging
+- 5/1/2021  - Fixing bugs when run on Linux; Debugging;
 
 *©2021 Brett W. Huffman*
