@@ -167,12 +167,12 @@ int main(int argc, char* argv[])
         int memAddress = rand() % 32768;
         // Setup for a bad address
         if(willReadOutsideLegalPageTable)
-            memAddress += 32768;
+            memAddress += rand() % 32768;;
         msg.type = OSS_MQ_TYPE;
         msg.action = (willRead) ? FRAME_READ : FRAME_WRITE;
         msg.procIndex = nItemToProcess;
         msg.procPid = nPid;
-        msg.memoryAddress = 41; //rand() % 32768;
+        msg.memoryAddress = memAddress; //rand() % 32768;
         // Send a memory request
         int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0);// IPC_NOWAIT);
         // Once we get the reply back, we can continue
@@ -193,7 +193,7 @@ int main(int argc, char* argv[])
         s.Wait();
         LogItem("PROC ", ossHeader->simClockSeconds,
             ossHeader->simClockNanoseconds,
-            "Frame granted: " + GetStringFromInt(msg.memoryAddress), 
+            "Memory Received - Continuing", 
             nPid, nItemToProcess, strLogFile);
         s.Signal();
 

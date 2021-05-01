@@ -355,7 +355,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     // Add approx 14 ms for each read/write
                     ossHeader->simClockNanoseconds += 14000000;
                     LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "Received Frame Request " + GetStringFromInt(msg.procIndex) + " : " + GetStringFromInt(msg.action), 
+                        ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Found",
                         msg.procPid, msg.procIndex, strLogFile);
                     s.Signal();
 
@@ -378,7 +378,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                         // Add approx 14 ms for each read/write
                         ossHeader->simClockNanoseconds += 14000000;
                         LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "Received Frame Request " + GetStringFromInt(msg.procIndex) + " Not Found - Queued for Retreival", 
+                            ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Not Found\n\t Queued for Retreival", 
                             msg.procPid, msg.procIndex, strLogFile);
                         s.Signal();                
                     }
