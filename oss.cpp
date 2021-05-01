@@ -216,7 +216,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // Terminate the process if CTRL-C is typed
         // or if the max time-to-process has been exceeded
         // but only send out messages to kill once
-        if(sigIntFlag || time(NULL) - secondsStart > 10 || nTotalProcessCount > 40)
+        if((sigIntFlag || time(NULL) - secondsStart > 10 || nTotalProcessCount > 40) && isKilled==false)
         {
             isKilled = true;
 
@@ -225,11 +225,33 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             {
                 // Send signal to close if they are in-process
                 s.Wait();
+
+                // Clear the wait queue
+                while(!IOQueue.empty())
+                {
+                    MemQueueItems mqi = IOQueue.front();
+                    IOQueue.pop();
+                    if(mqi.address > -1 && mqi.pcb > -1)
+                    {
+                        // Send memory response to waiting process
+                        msg.action = OK;
+                        msg.type = ossHeader->pcb[mqi.pcb].pid;
+                        msg.memoryAddress = 0;
+                        int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
+                    }
+                }
+
+
                 if(bm.getBitmapBits(nIndex))
                 {
                     // Kill it and update our bitmap
                     kill(ossHeader->pcb[nIndex].pid, SIGQUIT);
                     bm.setBitmapBits(nIndex, false);
+
+                    // Send back the message to continue shutdown
+//                    msg.action = PROCESS_SHUTDOWN;
+//                    msg.type = ossHeader->pcb[nIndex].pid;
+//                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), IPC_NOWAIT);
                 }
                 s.Signal();
             }
@@ -311,7 +333,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
         // ********************************************
         // Manage Child Requests
         // ********************************************
-        while(!isKilled && (msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0))
+        while(msgrcv(msgid, (void *) &msg, sizeof(message), OSS_MQ_TYPE, IPC_NOWAIT) > 0)
         {
             int nProcessID = msg.procPid;
             /*
