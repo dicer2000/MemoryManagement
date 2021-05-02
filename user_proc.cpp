@@ -172,7 +172,7 @@ int main(int argc, char* argv[])
         msg.action = (willRead) ? FRAME_READ : FRAME_WRITE;
         msg.procIndex = nItemToProcess;
         msg.procPid = nPid;
-        msg.memoryAddress = memAddress; //rand() % 32768;
+        msg.memoryAddress = memAddress;
         // Send a memory request
         int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0);// IPC_NOWAIT);
         // Once we get the reply back, we can continue

@@ -73,7 +73,7 @@ struct PageTable {
 
 struct PCB {
 	pid_t pid;
-	int currentFrame;
+	uint currentFrame;
 	PageTable ptable[pageCount]; // 32 indexes at 1k Each
 };
 

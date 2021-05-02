@@ -13,6 +13,7 @@
 #define OSS_H
 
 #include <string>
+#include "sharedStructures.h"
 
 using namespace std;
 
@@ -20,5 +21,6 @@ using namespace std;
 int ossProcess(std::string, int);
 
 int forkProcess(string, string, int);
+string GenerateMemLayout(const int, const PCB&);
 
 #endif // OSS_H

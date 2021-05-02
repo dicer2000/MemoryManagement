@@ -358,51 +358,72 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             }
             else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
             {
-                // First, check if the frame is already in our page table
-                int foundFrame = -1;
-                for(int i = 0; i < pageCount; i++)
-                {
-                    // If we've found this memory in the ptable and it's valid...
-                    if(ossHeader->pcb->ptable[i].frame==msg.memoryAddress && ossHeader->pcb->ptable[i].valid)
-                    {
-                        foundFrame = i;
-                        break;
-                    }
-                }
-
-                // Found the frame, grant it to the requesting client
-                if(foundFrame > -1)
+                // Check if the memory address is out of range.  If so, throw and
+                // fault and shutdown that process
+                if(msg.memoryAddress < 0 || msg.memoryAddress > 32767)
                 {
                     s.Wait();
-                    // Add approx 14 ms for each read/write
-                    ossHeader->simClockNanoseconds += 14000000;
                     LogItem("OSS  ", ossHeader->simClockSeconds,
-                        ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Found",
+                        ossHeader->simClockNanoseconds, "Memory request of range found: " + GetStringFromInt(msg.memoryAddress) + " shutting down process", 
                         msg.procPid, msg.procIndex, strLogFile);
                     s.Signal();
 
-                    // Memory aquired, continue
-                    msg.action = OK;
+                    // Send back the message to shutdown process
+                    msg.action = PROCESS_SHUTDOWN;
                     msg.type = nProcessID;
-                    msg.memoryAddress = 101;
                     int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
                 }
                 else
-                {   // Not found. Interrupt and Queue for disk retrieval
-                    if(msg.procIndex > 0 && bm.getBitmapBits(msg.procIndex)
-                        && msg.memoryAddress > 0)
+                {
+
+                    // First, check if the frame is already in our page table
+                    int foundFrame = -1;
+                    for(int i = 0; i < pageCount; i++)
                     {
-                        MemQueueItems mqi;
-                        mqi.pcb = msg.procIndex;
-                        mqi.address = msg.memoryAddress;
-                        IOQueue.push(mqi);
+                        // If we've found this memory in the ptable and it's valid...
+                        if(ossHeader->pcb->ptable[i].frame==msg.memoryAddress && ossHeader->pcb->ptable[i].valid)
+                        {
+                            foundFrame = i;
+                            if(msg.action==FRAME_WRITE)
+                                ossHeader->pcb->ptable[i].dirty = 1;
+                            break;
+                        }
+                    }
+
+                    // Found the frame, grant it to the requesting client
+                    if(foundFrame > -1)
+                    {
                         s.Wait();
                         // Add approx 14 ms for each read/write
                         ossHeader->simClockNanoseconds += 14000000;
                         LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Not Found\n\t Queued for Retreival", 
+                            ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Found",
                             msg.procPid, msg.procIndex, strLogFile);
-                        s.Signal();                
+                        s.Signal();
+
+                        // Memory aquired, continue
+                        msg.action = OK;
+                        msg.type = nProcessID;
+                        msg.memoryAddress = msg.memoryAddress;
+                        int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                    }
+                    else
+                    {   // Not found. Interrupt and Queue for disk retrieval
+                        if(msg.procIndex > 0 && bm.getBitmapBits(msg.procIndex)
+                            && msg.memoryAddress > 0)
+                        {
+                            MemQueueItems mqi;
+                            mqi.pcb = msg.procIndex;
+                            mqi.address = msg.memoryAddress;
+                            IOQueue.push(mqi);
+                            s.Wait();
+                            // Add approx 14 ms for each read/write
+                            ossHeader->simClockNanoseconds += 14000000;
+                            LogItem("OSS  ", ossHeader->simClockSeconds,
+                                ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Not Found\n\t Queued for Retreival", 
+                                msg.procPid, msg.procIndex, strLogFile);
+                            s.Signal();                
+                        }
                     }
                 }
             }
@@ -421,41 +442,48 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                 IOQueue.pop();
                 if(mqi.address > -1 && mqi.pcb > -1)
                 {
-                    // Find the next free frame if available
-                    int nFreeFrame = -1;
-                    for(; nFreeFrame < pageCount; nFreeFrame++)
+//                    cout << "&&&&&&&&& " << ossHeader->pcb[mqi.pcb].currentFrame << endl;
+//                    cout << "&&&&&&&&& " << ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference << endl;
+                    while(ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference > 0)
                     {
-                        if(ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame == -1)
-                            break;
+                        // Set the reference = 0, (2nd Chance Caching)
+                        ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference=0;
+                        // Maintain the circular reference
+                        ossHeader->pcb[mqi.pcb].currentFrame = ++ossHeader->pcb[mqi.pcb].currentFrame % pageCount;
                     }
+                    int nFreeFrame = ossHeader->pcb[mqi.pcb].currentFrame;  // Designate the new frame
+                    // Increment the counter
+                    ossHeader->pcb[mqi.pcb].currentFrame = ++ossHeader->pcb[mqi.pcb].currentFrame % pageCount;
 
-                    if(nFreeFrame > -1)
-                    {
-                        // Set the Page data
-                        ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame = mqi.address;
-                        ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].reference = 0;
-                        ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].protection = rand() % 2;
-                        ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].dirty = 0;
-                        ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].valid = 1;
+//                    cout << "&&&&&&&&& New " << ossHeader->pcb[mqi.pcb].currentFrame << endl;
+//                    cout << "&&&&&&&&& New " << ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference << endl;
 
-                        LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "Memory Granted: Frame " + GetStringFromInt(nFreeFrame), 
-                            ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
+                    // Set the Page data
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame = mqi.address;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].reference = 1;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].protection = rand() % 2;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].dirty = 0;
+                    ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].valid = 1;
 
-                        // Send memory response to waiting process
-                        msg.action = OK;
-                        msg.type = ossHeader->pcb[mqi.pcb].pid;
-                        msg.memoryAddress = mqi.address;
-                        int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
-                    }
-                    else
-                    {
-                        //*************** Error observed finding correct frame for memory
-                        LogItem("OSS  ", ossHeader->simClockSeconds,
-                            ossHeader->simClockNanoseconds, "Error observed finding correct frame for memory", 
-                            ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
-                        isShutdown = true;
-                    }
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Memory Granted: Frame " + GetStringFromInt(nFreeFrame), 
+                        ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
+
+                    LogItem(GenerateMemLayout(mqi.pcb, ossHeader->pcb[mqi.pcb]), strLogFile);
+
+                    // Send memory response to waiting process
+                    msg.action = OK;
+                    msg.type = ossHeader->pcb[mqi.pcb].pid;
+                    msg.memoryAddress = mqi.address;
+                    int n = msgsnd(msgid, (void *) &msg, sizeof(message), 0); //IPC_NOWAIT);
+                }
+                else
+                {
+                    //*************** Error observed finding correct frame for memory
+                    LogItem("OSS  ", ossHeader->simClockSeconds,
+                        ossHeader->simClockNanoseconds, "Error observed finding correct frame for memory", 
+                        ossHeader->pcb[mqi.pcb].pid, mqi.pcb, strLogFile);
+                    isShutdown = true;
                 }
             }
         }
@@ -544,3 +572,22 @@ int forkProcess(string strProcess, string strLogFile, int nArrayItem)
             return pid; // Returns the Parent PID
 }
 
+string GenerateMemLayout(const int index, const PCB& pcb)
+{
+    string strReturn = "PCB ";
+    strReturn.append(GetStringFromInt(index));
+    strReturn.append("\tOcc\tRef\tDirty\n");
+    for(int i=0; i < pageCount; i++)
+    {
+        strReturn.append("Fr ");
+        strReturn.append(GetStringFromInt(i));
+        strReturn.append("\t");
+        strReturn.append(GetStringFromInt(pcb.ptable[i].valid));
+        strReturn.append("\t");
+        strReturn.append(GetStringFromInt(pcb.ptable[i].reference));
+        strReturn.append("\t");
+        strReturn.append(GetStringFromInt(pcb.ptable[i].dirty));
+        strReturn.append("\n");
+    }
+    return strReturn;
+}
