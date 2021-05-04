@@ -40,8 +40,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     // Make sure there are always no more than 20 processes
     nProcessesRequested = min(nProcessesRequested, PROCESSES_MAX);
 
-cout << "*****" << nProcessesRequested << endl;
-sleep(2);
     // Important items
     struct OssHeader* ossHeader;
 
@@ -73,7 +71,7 @@ sleep(2);
    
 
     // Bitmap object for keeping track of children
-    bitmapper bm(PROCESSES_MAX);
+    bitmapper bm(nProcessesRequested);
     bitmapper memory(totalMemory);
 
     // Register SIGINT handling
@@ -135,7 +133,7 @@ sleep(2);
 
     // Setup all the arrays
     // Setup all Descriptors per instructions
-    for(int i=0; i < PROCESSES_MAX && !isShutdown; i++)
+    for(int i=0; i < nProcessesRequested && !isShutdown; i++)
     {
         ossHeader->pcb[i].pid = -1;
         ossHeader->pcb[i].currentFrame = 0;
@@ -183,12 +181,12 @@ sleep(2);
         // Create New Processes
         // ********************************************
         // Check bitmap for room to make new processes
-        if(nProcessCount < PROCESSES_MAX && !isKilled)
+        if(nProcessCount < nProcessesRequested && !isKilled)
         {
             // Check if there is room for new processes
             // in the bitmap structure
             int nIndex = 0;
-            for(;nIndex < PROCESSES_MAX; nIndex++)
+            for(;nIndex < nProcessesRequested; nIndex++)
             {
                 if(!bm.getBitmapBits(nIndex))
                 {
@@ -235,7 +233,7 @@ sleep(2);
             isKilled = true;
 
             // Send signal for every child process to terminate
-            for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
+            for(int nIndex=0;nIndex<nProcessesRequested;nIndex++)
             {
                 // Send signal to close if they are in-process
                 s.Wait();
@@ -303,7 +301,7 @@ sleep(2);
 
             // Find the PID and remove it from the bitmap
             s.Wait();
-            for(int nIndex=0;nIndex<PROCESSES_MAX;nIndex++)
+            for(int nIndex=0;nIndex<nProcessesRequested;nIndex++)
             {
                 if(ossHeader->pcb[nIndex].pid == waitPID)
                 {
