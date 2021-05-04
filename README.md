@@ -13,7 +13,7 @@ There were some items I didn't understand about the project's operation.  Based 
 
 1. All times are processed and shown in Seconds:Nanoseconds
 2. The pages are being kept as an array of structs (called PageTable).  This simulates 32 1k pages.  I'm using these structs instead of byte arrays per instruction by Jared Diehl in 4/28 and 4/29 meetings.
-
+3. I implemented FIFO Second Chance Page Replacement Algorithm per the instructions and per Jared Diehl's instruction on 4/29.  This includes running the algorithm from the user_process, setting up reclaimable, and swapping when page faulting.  Please see OSS and User_Proc for implementation details (Especially user_proc.cpp lines 201-239)
 
 ## Program Switches
 The program can be invoked as:
@@ -45,6 +45,14 @@ The biggest problems experienced in this project was in just understanding what 
 
 It seems there are many ways to interpret this project.  This code is the result of my interpretation and study with Jared Diehl.  Please see the assumptions above for key decisions made in the project.
 
+I ended up using structures to define each process' PCB.  All aspects of a frame were built into structures rather than into a tightly-composed bit structure.  I decided to take this approach after consulting with Jared Diehl in 4/28 and 4/29.
+
+## Conclusion
+
+The instructions wanted me to write a little on performance of the page replacement algorithm.  This was pretty easy to do as I didn't implement the replacement algorithm until last.  So, I had been staring at the statistics for some time.
+
+Once I implemented the FIFO 2nd Chance Page Replacement Algorithm, my statistics seemed to jump considerably.  Number of memory accesses per second increased by several accesses and the Number of page faults per memory access decreased.  Finally, the Avg Memory Access Speed increased by 1Kbps. It definitely had an affect on memory allocation performance.
+
 ## Work Log
 
 - 4/21/2021 - Setup initial project files and make file
@@ -58,5 +66,7 @@ It seems there are many ways to interpret this project.  This code is the result
 - 4/29/2021 - Debugging; Completing memory setup; Handling page faulting; Logging
 - 4/30/2021 - Changing how addresses are stored; Debugging
 - 5/1/2021  - Fixing bugs when run on Linux; Debugging;
+- 5/2/2021  - Added statistics; Debugging
+- 5/3/2021  - Debugging stats; Implemented FIFO Second Chance Page Replacement on get_page routine; Debugging; Updated Readme; Created RC1;
 
 *©2021 Brett W. Huffman*

@@ -17,11 +17,12 @@
 #include <algorithm>
 #include <unistd.h>
 #include "productSemaphores.h"
-#include "oss.h"
-#include "bitmapper.h"
 #include "sharedStructures.h"
+#include "bitmapper.h"
+#include "oss.h"
 
 using namespace std;
+
 
 // SIGINT handling
 volatile sig_atomic_t sigIntFlag = 0;
@@ -29,12 +30,18 @@ void sigintHandler(int sig){ // can be called asynchronously
   sigIntFlag = 1; // set flag
 }
 
+// Forward Declarations
+int forkProcess(string, string, int);
+string GenerateMemLayout(const int, const PCB&);
+
 // ossProcess - Process to start oss process.
 int ossProcess(string strLogFile, int nProcessesRequested)
 {
     // Make sure there are always no more than 20 processes
     nProcessesRequested = min(nProcessesRequested, PROCESSES_MAX);
 
+cout << "*****" << nProcessesRequested << endl;
+sleep(2);
     // Important items
     struct OssHeader* ossHeader;
 
@@ -78,11 +85,12 @@ int ossProcess(string strLogFile, int nProcessesRequested)
     int nProcessCount = 0;   // 100 MAX
     int nTotalProcessCount = 0;
     int nTotalTime = 0;
-    int countRequested = 0;
-    int countAllocated = 0;
-    int countReleased = 0;
-    int countWaited = 0;
     int nLastIOProcessTime = 0;
+    int nNumberMemoryAccesses = 0;
+    int nNumberPageFaults = 0;
+    int nNumberSegFaults = 0;
+    int MemoryAccessesTotalTimeNS = 0;
+    int MemoryAccessesTotalTimeS = 0;
 
     // Create a Semaphore to coordinate control
     productSemaphores s(KEY_MUTEX, true, 1);
@@ -164,6 +172,12 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             ossHeader->simClockNanoseconds -= 1000000000;
         }
         s.Signal();
+
+        if(MemoryAccessesTotalTimeNS > 1000000000)
+        {
+            MemoryAccessesTotalTimeS += floor(MemoryAccessesTotalTimeNS/1000000000);
+            MemoryAccessesTotalTimeNS -= 1000000000;
+        }
 
         // ********************************************
         // Create New Processes
@@ -358,6 +372,8 @@ int ossProcess(string strLogFile, int nProcessesRequested)
             }
             else if(msg.action==FRAME_READ || msg.action==FRAME_WRITE)
             {
+                nNumberMemoryAccesses++;
+
                 // Check if the memory address is out of range.  If so, throw and
                 // fault and shutdown that process
                 if(msg.memoryAddress < 0 || msg.memoryAddress > 32767)
@@ -368,6 +384,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                         msg.procPid, msg.procIndex, strLogFile);
                     s.Signal();
 
+                    nNumberSegFaults++;
                     // Send back the message to shutdown process
                     msg.action = PROCESS_SHUTDOWN;
                     msg.type = nProcessID;
@@ -396,6 +413,7 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                         s.Wait();
                         // Add approx 14 ms for each read/write
                         ossHeader->simClockNanoseconds += 14000000;
+                        MemoryAccessesTotalTimeNS += 14000000;
                         LogItem("OSS  ", ossHeader->simClockSeconds,
                             ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Found",
                             msg.procPid, msg.procIndex, strLogFile);
@@ -412,6 +430,9 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                         if(msg.procIndex > 0 && bm.getBitmapBits(msg.procIndex)
                             && msg.memoryAddress > 0)
                         {
+                            // Page fault!!
+                            nNumberPageFaults++;
+
                             MemQueueItems mqi;
                             mqi.pcb = msg.procIndex;
                             mqi.address = msg.memoryAddress;
@@ -419,8 +440,9 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                             s.Wait();
                             // Add approx 14 ms for each read/write
                             ossHeader->simClockNanoseconds += 14000000;
+                            MemoryAccessesTotalTimeNS += 14000000;
                             LogItem("OSS  ", ossHeader->simClockSeconds,
-                                ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Not Found\n\t Queued for Retreival", 
+                                ossHeader->simClockNanoseconds, "Received Memory Request " + GetStringFromInt(msg.memoryAddress) + " Not Found\n\t Page Fault - Queued for Retreival", 
                                 msg.procPid, msg.procIndex, strLogFile);
                             s.Signal();                
                         }
@@ -442,8 +464,6 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                 IOQueue.pop();
                 if(mqi.address > -1 && mqi.pcb > -1)
                 {
-//                    cout << "&&&&&&&&& " << ossHeader->pcb[mqi.pcb].currentFrame << endl;
-//                    cout << "&&&&&&&&& " << ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference << endl;
                     while(ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference > 0)
                     {
                         // Set the reference = 0, (2nd Chance Caching)
@@ -455,8 +475,17 @@ int ossProcess(string strLogFile, int nProcessesRequested)
                     // Increment the counter
                     ossHeader->pcb[mqi.pcb].currentFrame = ++ossHeader->pcb[mqi.pcb].currentFrame % pageCount;
 
-//                    cout << "&&&&&&&&& New " << ossHeader->pcb[mqi.pcb].currentFrame << endl;
-//                    cout << "&&&&&&&&& New " << ossHeader->pcb[mqi.pcb].ptable[ossHeader->pcb[mqi.pcb].currentFrame].reference << endl;
+                    // If writing to a Dirty page, add extra time for the write to memory
+                    // before we destroy the current values
+                    if(ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].dirty)
+                    {
+                        ossHeader->simClockNanoseconds += 14000000;
+                        MemoryAccessesTotalTimeNS += 14000000;
+                    }
+
+                    // Now, reading the new value in
+                    ossHeader->simClockNanoseconds += 14000000;
+                    MemoryAccessesTotalTimeNS += 14000000;
 
                     // Set the Page data
                     ossHeader->pcb[mqi.pcb].ptable[nFreeFrame].frame = mqi.address;
@@ -518,23 +547,27 @@ int ossProcess(string strLogFile, int nProcessesRequested)
 
     LogItem("OSS: Message Queue De-allocated", strLogFile);
 
-/*
+
     // Calc & Report the statistics
-    LogItem("________________________________\n", strLogFile);
-    LogItem("OSS Statistics", strLogFile);
-    LogItem("Total Requests Granted:\t\t\t" + GetStringFromInt(countAllocated), strLogFile);
-    LogItem("Requests Granted After Wait:\t\t" + GetStringFromInt(countWaited), strLogFile);
-    LogItem("Processes Killed By Deadlock:\t\t" + GetStringFromInt(countDeadlocked), strLogFile);
-    LogItem("Processes Die Naturally:\t\t" + GetStringFromInt(countDieNaturally), strLogFile);
-    LogItem("Times Deadlock Ran:\t\t\t" + GetStringFromInt(countDeadlockRuns), strLogFile);
-    if(countAllocated > 0)
+    if(nTotalTime > 0)
     {
-        string strDeadlockPercent = GetStringFromFloat((float)countDeadlocked/(float)countAllocated*100.0f);
-        LogItem("Avg Percent Deadlock:\t\t\t" + strDeadlockPercent, strLogFile);
+        LogItem("________________________________\n", strLogFile);
+        LogItem("OSS Statistics", strLogFile);
+        float fltStat = (float)nNumberMemoryAccesses / (float)nTotalTime;
+        LogItem("Number of memory accesses per second:\t\t\t" + GetStringFromFloat(fltStat), strLogFile);
+
+        fltStat = (float)nNumberPageFaults / (float)nNumberMemoryAccesses;
+        LogItem("Number of page faults per memory access:\t\t" + GetStringFromFloat(fltStat), strLogFile);
+        
+        fltStat = (float)nNumberMemoryAccesses/(float)MemoryAccessesTotalTimeS;
+        LogItem("Average memory access speed:\t\t\t\t" + GetStringFromFloat(fltStat) + " Kbps", strLogFile);
+        
+        fltStat = (float)nNumberSegFaults / (float)nNumberMemoryAccesses;
+        LogItem("Number of seg faults per memory access:\t\t\t" + GetStringFromFloat(fltStat), strLogFile);
     }
     s.Signal();
     cout << endl;
-*/
+
     // Success!
     return EXIT_SUCCESS;
 }

@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
 
     // Go through each parameter entered and
     // prepare for processing
-    while ((opt = getopt(argc, argv, "hp")) != -1) {
+    while ((opt = getopt(argc, argv, "hp:")) != -1) {
         switch (opt) {
             case 'h':
                 show_usage(argv[0]);

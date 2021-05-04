@@ -195,6 +195,49 @@ int main(int argc, char* argv[])
             ossHeader->simClockNanoseconds,
             "Memory Received - Continuing", 
             nPid, nItemToProcess, strLogFile);
+
+
+
+        // Perform the FIFO Second Chance Page Replacement Algorithm
+        // Find out % total free frames - < 10%
+        int totalFrameFree = 0;
+        for(int i = 0; i < pageCount; i++)
+        {
+            if(!ossHeader->pcb[nItemToProcess].ptable[i].valid)
+                totalFrameFree++;
+        }
+        // Is < 10% Free?
+        if(totalFrameFree < (pageCount / 10 + 1) )
+        {
+            LogItem("PROC ", ossHeader->simClockSeconds,
+                ossHeader->simClockNanoseconds,
+                "Running FIFO 2nd Chance Page Replacement Algorithm", 
+                nPid, nItemToProcess, strLogFile);
+
+            // Clear 5% of total frames
+            int FrameToClear = ossHeader->pcb[nItemToProcess].currentFrame;
+            for(int i = 0; i < (pageCount / 5 + 1); i++)
+            {
+                FrameToClear--;
+                if(FrameToClear < 0) FrameToClear = pageCount - 1;
+                // Make invalid if valid
+                if(ossHeader->pcb[nItemToProcess].ptable[i].valid)
+                    ossHeader->pcb[nItemToProcess].ptable[i].valid = 0;
+                else
+                {
+                    // if dirty write it to disk
+                    if(ossHeader->pcb[nItemToProcess].ptable[i].dirty)
+                        ossHeader->simClockNanoseconds += 14000000;
+                    // Clear the entire thing
+                    ossHeader->pcb[nItemToProcess].ptable[i].frame = -1;
+                    ossHeader->pcb[nItemToProcess].ptable[i].reference = 0;
+                    ossHeader->pcb[nItemToProcess].ptable[i].protection = rand() % 2;
+                    ossHeader->pcb[nItemToProcess].ptable[i].dirty = 0;
+                    ossHeader->pcb[nItemToProcess].ptable[i].valid = 0;
+                }
+            }
+        }
+
         s.Signal();
 
     }
